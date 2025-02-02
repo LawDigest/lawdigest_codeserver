@@ -1,0 +1,9 @@
+requests
+pandas
+lxml  # xml.etree.ElementTree를 사용하기 위한 패키지
+jupyter  # IPython.display를 위한 패키지
+openai
+python-dotenv
+beautifulsoup4
+tqdm
+PyMySQL
