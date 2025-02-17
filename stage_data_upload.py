@@ -7,7 +7,7 @@ print(f'{datetime.datetime.now()} 타임라인 데이터 업데이트 시작')
 start_time = time.time()
 
 # 법안 데이터 업데이트
-dataops.update_bills_timeline(start_date='2024-12-31', mode='local')
+dataops.update_bills_timeline(mode='remote')
 
 end_time = time.time()
 elapsed_time = end_time - start_time
