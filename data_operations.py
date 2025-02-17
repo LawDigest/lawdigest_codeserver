@@ -2087,6 +2087,14 @@ def fetch_vote_party(df_vote, age=None):
 
 def update_bills_vote(start_date=None, end_date=None, mode='test', age=None):
     
+    # 모드 확인 구문 추가 - 250217
+    mode_list = ['remote', 'local', 'fetch']
+
+    if mode not in mode_list:
+        raise ValueError(f"[올바른 모드를 선택해주세요. 모드 목록: {mode_list}]")
+
+    print(f"[선택한 모드:{mode}]")
+
     if start_date is None:
         # 어제 날짜를 기본값으로 설정
         start_date = (datetime.now() - timedelta(1)).strftime('%Y-%m-%d')
@@ -2155,8 +2163,8 @@ def update_bills_vote(start_date=None, end_date=None, mode='test', age=None):
             url = url.replace("https://api.lawdigest.net", "http://localhost:8080")
             send_data(df_vote, url, payloadName)
         
-        if mode == 'test':
-            print("[테스트 모드 : 표결 수 데이터 전송 생략]")
+        if mode == 'fetch':
+            print("[데이터 수집 모드 : 표결 수 데이터 전송 생략]")
     
     if df_vote_party is None:
         print("정당별 표결 결과 데이터가 없습니다. 코드를 종료합니다.")
@@ -2182,8 +2190,8 @@ def update_bills_vote(start_date=None, end_date=None, mode='test', age=None):
                 url = url.replace("https://api.lawdigest.net", "http://localhost:8080")
                 send_data(df_vote_party, url, payloadName)
             
-            if mode == 'test':
-                print("[테스트 모드 : 표결 수 데이터 전송 생략]")
+            if mode == 'fetch':
+                print("[데이터 수집 모드 : 표결 수 데이터 전송 생략]")
     
     return df_vote, df_vote_party
     
