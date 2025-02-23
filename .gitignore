@@ -7,3 +7,5 @@ __pycache__/
 debug/debug_250217.ipynb
 debug/test_250215.ipynb
 debug/test_alt_api.ipynb
+debug*
+test*
