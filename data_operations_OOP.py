@@ -643,3 +643,95 @@ class DataFetcher:
         self.content = df_timeline
 
         return df_timeline
+
+    def fetch_bills_result(self):
+        # start_date와 end_date를 self.params에서 가져오거나 기본값(오늘 날짜)으로 설정
+        start_date = datetime.strptime(self.params.get("start_date", datetime.now().strftime('%Y-%m-%d')), '%Y-%m-%d')
+        end_date = datetime.strptime(self.params.get("end_date", datetime.now().strftime('%Y-%m-%d')), '%Y-%m-%d')
+            
+        # 나이(age) 파라미터 설정 (self.params 우선, 없으면 환경변수)
+        age = self.params.get("age") or os.getenv("AGE")
+        
+        # API 키와 URL 설정
+        api_key = os.getenv("APIKEY_result")
+        url = 'https://open.assembly.go.kr/portal/openapi/TVBPMBILL11'
+        
+        all_data = []
+        processing_count = 0
+        max_retry = 10
+        
+        print(f"\n[{start_date.strftime('%Y-%m-%d')} ~ {end_date.strftime('%Y-%m-%d')} 데이터 수집]")
+        start_time = time.time()
+        
+        current_date = start_date
+        while current_date <= end_date:
+            pageNo = 1
+            while True:
+                params = {
+                    'KEY': api_key,
+                    'Type': 'xml',
+                    'pIndex': pageNo,
+                    'pSize': 100,
+                    'AGE': age,
+                    'PROC_DT': current_date.strftime('%Y-%m-%d')
+                }
+                
+                response = requests.get(url, params=params)
+                
+                if response.status_code == 200:
+                    try:
+                        root = ElementTree.fromstring(response.content)
+                        head = root.find('head')
+                        if head is None:
+                            break
+                        total_count_elem = head.find('list_total_count')
+                        if total_count_elem is None:
+                            break
+                        total_count = int(total_count_elem.text)
+                        
+                        rows = root.findall('row')
+                        if not rows:
+                            break
+                        
+                        data = []
+                        for row_elem in rows:
+                            row = {child.tag: child.text for child in row_elem}
+                            data.append(row)
+                        
+                        all_data.extend(data)
+                        print(f"{current_date.strftime('%Y-%m-%d')} | page {pageNo} | total: {len(all_data)}")
+                        processing_count += 1
+                        
+                        if pageNo * 100 >= total_count:
+                            break
+                    except Exception as e:
+                        print(f"Error: {e}")
+                        max_retry -= 1
+                else:
+                    print(f"Error Code: {response.status_code} (Page {pageNo})")
+                    max_retry -= 1
+                
+                if max_retry <= 0:
+                    print("Maximum retry reached. Exiting...")
+                    break
+                
+                pageNo += 1
+            current_date += timedelta(days=1)
+        
+        df_result = pd.DataFrame(all_data)
+        
+        if df_result.empty:
+            print("수집된 데이터가 없습니다.")
+            self.content = None
+            return None
+        
+        end_time = time.time()
+        total_time = end_time - start_time
+        print(f"[모든 파일 다운로드 완료! 전체 소요 시간: {total_time:.2f}초]")
+        print(f"Total dates processed: {(end_date - start_date).days + 1}")
+        print(f"[{len(df_result)} 개의 데이터 수집됨]")
+        
+        pd.set_option('display.max_columns', None)
+        
+        self.content = df_result
+        return df_result
