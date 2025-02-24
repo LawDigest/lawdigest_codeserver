@@ -133,6 +133,7 @@ class DataFetcher:
         self.content = None # 수집된 데이터
         self.df_bills = None
         self.df_lawmakers = None
+        self.df_vote = None
 
         load_dotenv()
         
@@ -730,4 +731,219 @@ class DataFetcher:
         
         self.content = df_result
         return df_result
+
+    def fetch_bills_vote(self):
+        # 환경 변수 로드
+        api_key = os.getenv("APIKEY_status")
+
+        # start_date, end_date 기본값 설정 (어제 ~ 오늘)
+        start_date_str = self.params.get("start_date", (datetime.now() - timedelta(1)).strftime('%Y-%m-%d'))
+        end_date_str = self.params.get("end_date", datetime.now().strftime('%Y-%m-%d'))
+        age = self.params.get("age") or os.getenv("AGE")
+
+        # 문자열을 datetime 객체로 변환
+        start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
+        end_date = datetime.strptime(end_date_str, '%Y-%m-%d')
+        date_range = (end_date - start_date).days + 1
+
+        url = 'https://open.assembly.go.kr/portal/openapi/nwbpacrgavhjryiph'
+        all_data = []
+        pageNo = 1
+        processing_count = 0
+        start_time = time.time()
+
+        print(f"\n📌 [INFO] [{start_date.strftime('%Y-%m-%d')} ~ {end_date.strftime('%Y-%m-%d')}] 본회의 의결 데이터 수집 시작...")
+
+        for single_date in (start_date + timedelta(n) for n in range(date_range)):
+            date_str = single_date.strftime('%Y-%m-%d')
+
+            while True:
+                params = {
+                    'KEY': api_key,
+                    'Type': 'xml',
+                    'pIndex': pageNo,
+                    'pSize': 100,
+                    'AGE': age,
+                    'RGS_PROC_DT': date_str  # 본회의심의_의결일 필터링
+                }
+
+                try:
+                    response = requests.get(url, params=params, timeout=10)
+
+                    if response.status_code == 200:
+                        root = ElementTree.fromstring(response.content)
+                        head = root.find('head')
+                        if head is None:
+                            break
+
+                        total_count_elem = head.find('list_total_count')
+                        if total_count_elem is None:
+                            break
+
+                        total_count = int(total_count_elem.text)
+                        rows = root.findall('row')
+
+                        if not rows:
+                            print(f"⚠️ [WARNING] {date_str} 데이터 없음. (📄 Page {pageNo})")
+                            break
+
+                        data = [{child.tag: child.text for child in row_elem} for row_elem in rows]
+                        all_data.extend(data)
+                        print(f"✅ [INFO] {date_str} | 📄 Page {pageNo} | 📊 Total: {len(all_data)} 개 수집됨.")
+                        processing_count += 1
+
+                        if pageNo * 100 >= total_count:
+                            break
+
+                    else:
+                        print(f"❌ [ERROR] 응답 코드: {response.status_code} (📄 Page {pageNo})")
+                        break
+
+                except Exception as e:
+                    print(f"❌ [ERROR] 데이터 처리 중 오류 발생: {e}")
+                    break
+
+                pageNo += 1
+
+            pageNo = 1  # 다음 날짜로 넘어갈 때 페이지 번호 초기화
+
+        # 데이터프레임 생성
+        df_vote = pd.DataFrame(all_data)
+
+        end_time = time.time()
+        total_time = end_time - start_time
+        print(f"\n✅ [INFO] 모든 파일 다운로드 완료! ⏳ 전체 소요 시간: {total_time:.2f}초")
+        print(f"📌 [INFO] 총 {len(df_vote)} 개의 본회의 의결 데이터 수집됨.")
+
+        self.df_vote = df_vote
+        self.content = df_vote
+
+        return df_vote
+
+    def fetch_vote_party(self):
+        # 환경 변수 로드
+        api_key = os.getenv("APIKEY_status")
+        age = self.params.get("age") or os.getenv("AGE")
+        url = 'https://open.assembly.go.kr/portal/openapi/nojepdqqaweusdfbi'
+
+        all_data = []
+        count = 0
+        pageNo = 1
+        processing_count = 0
+        max_retry = 10
+
+        start_time = time.time()
+
+        df_vote = self.df_vote
+        if df_vote == None:
+            print("⚠️ [WARNING] 수집에 필요한 df_vote 데이터가 없습니다.")
+            self.fetch_bills_vote()
+            if len(self.df_vote) == 0:
+                print("🚨 [WARNING] 해당 날짜에 수집 가능한 데이터가 없습니다. 코드를 종료합니다.")
+                return None
+                
+        df_vote = self.df_vote
+
+        print(f"\n📌 [INFO] 법안별 정당별 투표 결과 데이터 수집 시작...")
+
+        for bill_id in df_vote[df_vote['PROC_RESULT_CD'] != '철회']['BILL_ID']:
+            pageNo = 1
+            while True:
+                print(f"🔍 [INFO] 법안 ID: {bill_id} 처리 중...")
+                params = {
+                    'KEY': api_key,
+                    'Type': 'xml',
+                    'pIndex': pageNo,
+                    'pSize': 100,
+                    'AGE': age,
+                    'BILL_ID': bill_id
+                }
+
+                count += 1
+                print(f"📄 [INFO] 페이지 {pageNo} 요청 중...")
+
+                try:
+                    response = requests.get(url, params=params, timeout=10)
+
+                    if response.status_code == 200:
+                        root = ElementTree.fromstring(response.content)
+                        head = root.find('head')
+                        if head is None:
+                            print(f"⚠️ [WARNING] 응답에 'head' 요소가 없습니다. (📄 Page {pageNo})")
+                            break
+
+                        total_count_elem = head.find('list_total_count')
+                        if total_count_elem is None:
+                            print(f"⚠️ [WARNING] 'list_total_count' 요소가 없습니다. (📄 Page {pageNo})")
+                            break
+
+                        total_count = int(total_count_elem.text)
+                        rows = root.findall('row')
+
+                        if not rows:
+                            print(f"⚠️ [WARNING] {bill_id}에 대한 추가 데이터 없음. (📄 Page {pageNo})")
+                            break
+
+                        data = [{child.tag: child.text for child in row_elem} for row_elem in rows]
+                        all_data.extend(data)
+                        print(f"✅ [INFO] 📄 Page {pageNo} | 📊 총 {len(all_data)} 개 데이터 수집됨.")
+
+                        processing_count += 1
+
+                        if pageNo * 100 >= total_count:
+                            print(f"✅ [INFO] 법안 ID: {bill_id}의 모든 페이지 처리 완료.")
+                            break
+
+                    else:
+                        print(f"❌ [ERROR] 응답 코드: {response.status_code} (📄 Page {pageNo})")
+                        break
+
+                except Exception as e:
+                    print(f"❌ [ERROR] 데이터 처리 중 오류 발생: {e}")
+                    break
+
+                if max_retry <= 0:
+                    print("🚨 [WARNING] 최대 재시도 횟수 초과! 데이터 수집 중단.")
+                    break
+
+                pageNo += 1
+
+        # 데이터프레임 생성
+        df_vote_individual = pd.DataFrame(all_data)
+
+        if df_vote_individual.empty:
+            print("⚠️ [WARNING] 수집된 데이터가 없습니다.")
+            self.content = None
+            return None
+
+        end_time = time.time()
+        total_time = end_time - start_time
+        print(f"\n✅ [INFO] 모든 파일 다운로드 완료! ⏳ 전체 소요 시간: {total_time:.2f}초")
+        print(f"📌 [INFO] 총 {len(df_vote_individual)} 개의 투표 데이터 수집됨.")
+
+        # 필요한 컬럼만 유지
+        columns_to_keep = [
+            'AGE',  # 대수
+            'BILL_ID',  # 의안번호
+            'HG_NM',  # 의원명
+            'POLY_NM',  # 소속정당
+            'RESULT_VOTE_MOD',  # 표결결과
+        ]
+        df_vote_individual = df_vote_individual[columns_to_keep]
+
+        # 정당별 찬성 투표 개수 집계
+        df_vote_party = df_vote_individual[df_vote_individual['RESULT_VOTE_MOD'] == '찬성'] \
+            .groupby(['BILL_ID', 'POLY_NM']) \
+            .size() \
+            .reset_index(name='voteForCount')
+
+        # 컬럼 이름 변경
+        df_vote_party.rename(columns={
+            'BILL_ID': 'billId',
+            'POLY_NM': 'partyName',
+            'voteForCount': 'voteForCount'
+        }, inplace=True)
+
+        self.content = df_vote_party
+        return df_vote_party
 
