@@ -124,7 +124,10 @@ class DataFetcher:
     def __init__(self, subject, params=None, url=None, filter_data=True):
         
         self.subject = str(subject) # 수집대상
-        self.params = params # 요청변수
+        if params == None:
+            self.params = {}
+        else:
+            self.params = params # 요청변수
         self.url = url # 모드(처리방식)
         self.filter_data = filter_data
         self.content = None # 수집된 데이터
@@ -562,3 +565,81 @@ class DataFetcher:
             print(f"✅ [INFO] 공동 발의자 정보 수집 완료. 총 {len(df_coactors)} 개의 법안 대상")
 
             return df_coactors
+
+    def fetch_bills_timeline(self):
+        all_data = []
+        pageNo = 1
+        processing_count = 0
+        start_time = time.time()
+
+        start_date_str = self.params.get("start_date") or (datetime.now() - timedelta(1)).strftime('%Y-%m-%d')
+        end_date_str = self.params.get("end_date") or datetime.now().strftime('%Y-%m-%d')
+        age = self.params.get("age") or os.environ.get("AGE")
+
+        # 문자열을 datetime 객체로 변환
+        start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
+        end_date = datetime.strptime(end_date_str, '%Y-%m-%d')
+        date_range = (end_date - start_date).days + 1
+
+        print(f"\n[{start_date.strftime('%Y-%m-%d')} ~ {end_date.strftime('%Y-%m-%d')} 의정활동 데이터 수집]")
+
+        max_retry = 3
+
+        url="https://open.assembly.go.kr/portal/openapi/nqfvrbsdafrmuzixe"
+
+        for single_date in (start_date + timedelta(n) for n in range(date_range)):
+            date_str = single_date.strftime('%Y-%m-%d')
+
+            while True:
+                params = {
+                    "Key": os.environ.get("APIKEY_status"),
+                    "Type": "xml",
+                    "pIndex": pageNo,
+                    "pSize": 100,
+                    "AGE": age,
+                    "DT": date_str
+                }
+
+                try:
+                    response = requests.get(url, params=params, timeout=10)
+
+                    if response.status_code == 200:
+                        root = ElementTree.fromstring(response.content)
+                        items = root.findall(".//row")
+
+                        if not items:
+                            break  # 더 이상 데이터 없음
+
+                        data = [{child.tag: child.text for child in item} for item in items]
+                        all_data.extend(data)
+                        print(f"Data for {date_str}, page {pageNo} processed. {len(data)} items added. total: {len(all_data)}")
+                        processing_count += 1
+                    else:
+                        print(f"Error Code: {response.status_code} (Date: {date_str}, Page {pageNo})")
+                        max_retry -= 1
+
+                except Exception as e:
+                    print(f"Error processing response: {str(e)}")
+                    max_retry -= 1
+
+                if max_retry <= 0:
+                    print("Maximum retry reached. Exiting...")
+                    break
+
+                if processing_count >= 10:
+                    processing_count = 0
+
+                pageNo += 1
+
+            pageNo = 1  # 날짜가 변경되면 페이지 번호 초기화
+
+        df_timeline = pd.DataFrame(all_data)
+
+        end_time = time.time()
+        total_time = end_time - start_time
+        print(f"모든 파일 다운로드 완료! 전체 소요 시간: {total_time:.2f}초")
+        print(f"{len(df_timeline)} 개의 의정활동 데이터가 수집됨.")
+
+        self.content = df_timeline
+
+        return df_timeline
