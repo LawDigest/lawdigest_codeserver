@@ -157,6 +157,8 @@ class DataFetcher:
                 return self.fetch_bills_vote()
             case "vote_party":
                 return self.fetch_vote_party()
+            case "alternative_bill":
+                return self.fetch_bills_alternatives()
             case _:
                 print(f"❌ [ERROR] '{self.subject}' is not a valid subject.")
                 return None
@@ -265,24 +267,23 @@ class DataFetcher:
             # 인덱스 재설정
             df_bills_content.reset_index(drop=True, inplace=True)
 
-            # 컬럼 이름 변경
-            df_bills_content.rename(columns={
-                "proposeDt": "proposeDate",
-                "billNo": "billNumber",
-                "summary": "summary",
-                "procStageCd": "stage"
-            }, inplace=True)
+            
 
             print(f"✅ [INFO] 결측치 처리 완료. {len(df_bills_content)} 개의 법안 유지됨.")
-            print("\n📌 발의일자별 수집한 데이터 수:")
-            print(df_bills_content['proposeDate'].value_counts()) 
 
         else:
             print("✅ [INFO] 데이터 컬럼 필터링을 수행하지 않습니다.")
-            print("\n📌 발의일자별 수집한 데이터 수:")
-            print(df_bills_content["proposeDt"].value_counts()) 
 
-        
+        # 컬럼 이름 변경
+        df_bills_content.rename(columns={
+            "proposeDt": "proposeDate",
+            "billNo": "billNumber",
+            "summary": "summary",
+            "procStageCd": "stage"
+        }, inplace=True)
+
+        print("\n📌 발의일자별 수집한 데이터 수:")
+        print(df_bills_content['proposeDate'].value_counts()) 
 
         self.content = df_bills_content
         self.df_bills = df_bills_content
@@ -337,9 +338,9 @@ class DataFetcher:
                         if data:
                             all_data.extend(data)
                         else:
-                            break
+                            continue
                     else:
-                        break
+                        continue
 
                 except requests.exceptions.RequestException as e:
                     print(f"❌ [ERROR] 요청 오류: {e}")
@@ -947,3 +948,83 @@ class DataFetcher:
         self.content = df_vote_party
         return df_vote_party
 
+    def fetch_bills_alternatives(self):
+        """
+        클래스 속성 self.df_bills를 기반으로 각 법안의 대안을 수집하고 반환하는 메서드.
+
+        Returns:
+        pd.DataFrame: 각 법안의 대안을 포함하는 데이터프레임
+        """
+
+        # df_bills 확인 및 자동 수집
+        if self.df_bills is None or self.df_bills.empty:
+            print("⚠️ [WARNING] 수집된 법안 데이터(self.df_bills)가 없습니다. 법안 내용을 먼저 수집합니다...")
+            self.df_bills = self.fetch_bills_info()
+
+            # 수집 후에도 df_bills가 없으면 종료
+            if self.df_bills is None or self.df_bills.empty:
+                print("🚨 [WARNING] 법안 내용 데이터를 수집할 수 없습니다. 작업을 중단합니다.")
+                return None
+
+        def fetch_alternativeBills_relation_data(bill_id):
+            """ 주어진 bill_id에 대한 대안 법안 데이터를 API에서 수집하는 내부 함수 """
+            url = 'http://apis.data.go.kr/9710000/BillInfoService2/getBillAdditionalInfo'
+            params = {
+                'serviceKey': 'UJY+e286zOQsAHMHd/5cggpYFaFqG5mWawJKgrubJeKRBqVp0VUsyeHIgw/VGPQjWRSp6yaR/sUhXlhpKyv1cg==',
+                'bill_id': bill_id
+            }
+
+            try:
+                response = requests.get(url, params=params, timeout=10)
+
+                if response.status_code == 200:
+                    root = ElementTree.fromstring(response.content)
+                    items = root.find('.//exhaust')
+
+                    if items is None or len(items.findall('item')) == 0:
+                        return []
+
+                    law_data = []
+                    for item in items.findall('item'):
+                        bill_link = item.find('billLink').text
+                        law_bill_id = bill_link.split('bill_id=')[-1]
+                        bill_name = item.find('billName').text.encode('utf-8').decode('utf-8')  # 한글 디코딩
+                        law_data.append({'billId': law_bill_id, 'billName': bill_name})
+
+                    return law_data
+                else:
+                    print(f"❌ [ERROR] API 요청 실패 (bill_id={bill_id}), 응답 코드: {response.status_code}")
+                    return []
+            except Exception as e:
+                print(f"❌ [ERROR] bill_id={bill_id} 처리 중 오류 발생: {e}")
+                return []
+
+        # 대안 데이터프레임 초기화
+        alternatives_data = []
+
+        print("📌 [INFO] 법안별 대안 데이터 수집 시작...")
+
+        # tqdm을 사용하여 진행 상황 표시
+        for _, row in tqdm(self.df_bills.iterrows(), total=len(self.df_bills)):
+            alt_id = row['billId']  # 대안(위원장안) ID
+
+            # 대안 데이터 수집
+            law_data = fetch_alternativeBills_relation_data(alt_id)
+
+            # 수집된 데이터를 리스트에 추가
+            for law in law_data:
+                alternatives_data.append({
+                    'altBillId': alt_id,  # 대안(위원장안) ID
+                    'billId': law['billId'],  # 대안에 포함된 법안 ID
+                })
+
+        # 대안 데이터를 데이터프레임으로 변환
+        df_alternatives = pd.DataFrame(alternatives_data)
+
+        if df_alternatives.empty:
+            print("⚠️ [WARNING] 대안 법안 데이터를 수집하지 못했습니다.")
+        else:
+            print(f"✅ [INFO] 총 {len(df_alternatives)} 개의 대안 법안 데이터 수집 완료.")
+
+        self.content = df_alternatives  # 클래스 속성에 저장
+        return df_alternatives
