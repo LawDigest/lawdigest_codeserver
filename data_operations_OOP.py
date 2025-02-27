@@ -1028,3 +1028,85 @@ class DataFetcher:
 
         self.content = df_alternatives  # 클래스 속성에 저장
         return df_alternatives
+
+class DataProcessor:
+    def __init__(self, input_data):
+        self.input_data = input_data
+        self.output_data
+    
+    def process_by_proposer_type(self): 
+        # TODO: 함수 최신화되었는지 검토 필요. 특히 공동발의자, 대표발의자 리스트 관련해서 필요한 로직만 남았는지 검토 
+        """법안 발의자 유형별로 데이터를 그룹화하는 함수
+
+        Args:
+            input_data (pd.DataFrame): 법안 데이터
+
+        Returns:
+            dict: 법안 발의자 유형별로 그룹화된 데이터
+        """
+        df_bills = self.input_data
+
+        # 법안 발의주체별 분리
+        df_bills_congressman = df_bills[df_bills['proposerKind'] == '의원'].copy()
+        df_bills_chair = df_bills[df_bills['proposerKind'] == '위원장'].copy()
+        df_bills_gov = df_bills[df_bills['proposerKind'] == '정부'].copy()
+        
+        if(len(df_bills_congressman) == 0 and len(df_bills_chair) == 0):
+            print("의원 혹은 위원장이 발의한 법안이 없습니다. 코드를 종료합니다.")
+            return pd.DataFrame()
+
+        if len(df_bills_chair) > 0: # 위원장 발의 법안이 존재하는 경우
+
+            print("위원장 발의 법안 존재 - 대안 관계 데이터 수집")
+            df_alternatives = fetch_bills_alternatives(df_bills_chair)
+
+        # df_bills_congressman 처리
+        
+        # df_bills_congressman에 발의자 정보 컬럼 머지
+        print("\n[의원 발의자 데이터 수집 및 병합 중...]")
+        df_coactors = fetch_bills_coactors(df_bills_congressman)  
+        df_bills_congressman = pd.merge(df_bills_congressman, df_coactors, on='billId', how='inner')
+
+        print("[의원 발의자 데이터 수집 및 병합 완료]")
+        
+        def get_proposer_codes(row):
+            name_list_length = len(row['rstProposerNameList'])
+            return row['publicProposerIdList'][:name_list_length]
+
+        # 새로운 컬럼 rstProposerIdList에 publicProposerIdList 리스트에서 슬라이싱한 값 추가
+        print(df_bills_congressman.info())
+        df_bills_congressman['rstProposerIdList'] = df_bills_congressman.apply(get_proposer_codes, axis=1)
+        
+        # df_bills_chair의 billName에서 (대안) 제거
+        df_bills_chair['billName'] = df_bills_chair['billName'].str.replace(r'\(대안\)', '', regex=True)
+        
+        #df_bills_chair에 발의자 정보 빈 리스트로 추가
+        # df_bills_chair['rstProposerNameList'] = ""
+        # df_bills_chair['rstProposerPartyNameList'] = ""
+        # df_bills_chair['publicProposers'] = ""
+        
+        # df_bills_gov에 발의자 정보 빈 리스트로 추가
+        # df_bills_gov['rstProposerNameList'] = ""
+        # df_bills_gov['rstProposerPartyNameList'] = ""
+        # df_bills_gov['publicProposers'] = ""
+        
+        # 모든 데이터프레임을 하나로 합치기
+        print("\n[모든 데이터프레임 병합 중...]")
+        df_combined = pd.concat([df_bills_congressman, df_bills_chair], ignore_index=True)
+        
+        print(f"[병합된 데이터프레임 크기: {len(df_combined)}행]")
+        print(f"[의원 발의: {len(df_bills_congressman)}행, 위원장 발의: {len(df_bills_chair)}행]")
+        
+        # 제외할 컬럼 목록
+        columns_to_drop = ['rstProposerNameList', 'ProposerName']
+        df_combined.drop(columns=columns_to_drop, inplace=True)
+        
+        self.output_data = df_combined
+
+        return df_combined 
+
+    def merge_bills_df(self):
+        pass
+
+    def remove_duplicates(self):
+        pass
