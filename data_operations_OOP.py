@@ -112,6 +112,19 @@ class DatabaseManager:
             query = "SELECT bill_id FROM bills"
             results = self.execute_query(query)
             return [row["bill_id"] for row in results] if results else []
+    
+    def get_existing_bill_ids(self, bills_ids):
+        """데이터베이스에 이미 존재하는 법안 id를 반환하는 함수"""
+        
+        format_strings = ','.join(['%s'] * len(bill_ids))
+
+        query = f"SELECT {'bill_id'} FROM Bill WHERE {'bill_id'} IN ({format_strings})", tuple(bill_ids)
+        result = self.execute_query(query, fetch_one=False)
+
+        # Extract IDs from the result
+        existing_ids = [row[0] for row in result]
+        
+        return existing_ids
 
     def close(self):
         """데이터베이스 연결 종료"""
@@ -1032,8 +1045,17 @@ class DataFetcher:
 class DataProcessor:
     def __init__(self, input_data):
         self.input_data = input_data
-        self.output_data
+        self.output_data = None
     
+    def process_congressman_bills(self):
+        pass
+
+    def process_chairman_bills(self):
+        pass
+
+    def process_gov_bills(self):
+        pass
+
     def process_by_proposer_type(self): 
         # TODO: 함수 최신화되었는지 검토 필요. 특히 공동발의자, 대표발의자 리스트 관련해서 필요한 로직만 남았는지 검토 
         """법안 발의자 유형별로 데이터를 그룹화하는 함수
@@ -1110,3 +1132,6 @@ class DataProcessor:
 
     def remove_duplicates(self):
         pass
+
+
+
