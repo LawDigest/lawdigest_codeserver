@@ -1047,12 +1047,48 @@ class DataProcessor:
         self.input_data = None
         self.output_data = None
     
-    def process_congressman_bills(self, df_bills):
-        """의원 발의 법안을 처리하는 함수"""
+    def process_congressman_bills(self, df_bills, df_coactors):
+        """의원 발의 법안을 처리하는 함수
+        
+        Args:
+            df_bills (pd.DataFrame) : 수집한 법안 데이터
+            df_coactors (pd.DataFrame) : 수집한 공동발의자 데이터
+        
+        Return:
+            df_bills_congressman (pd.DataFrame) : 처리된 의원 발의 법안 데이터
+        """
+        df_bills_congressman = df_bills[df_bills['proposerKind'] == '의원'].copy()
+        
+        if(len(df_bills_congressman) == 0):
+            print("[의원 발의 법안이 없습니다. 코드를 종료합니다.]")
+            return pd.DataFrame()
+        
+         # df_bills_congressman에 발의자 정보 컬럼 머지
+        print("\n[의원 발의자 데이터 병합 중...]")
+        df_bills_congressman = pd.merge(df_bills_congressman, df_coactors, on='billId', how='inner')
 
-        pass
+        print("[의원 발의자 데이터 병합 완료]")
 
-    def process_chairman_bills(self):
+        def get_proposer_codes(row):
+            name_list_length = len(row['rstProposerNameList'])
+            return row['publicProposerIdList'][:name_list_length]
+
+        # 새로운 컬럼 rstProposerIdList에 publicProposerIdList 리스트에서 슬라이싱한 값 추가
+        print(df_bills_congressman.info())
+        df_bills_congressman['rstProposerIdList'] = df_bills_congressman.apply(get_proposer_codes, axis=1)
+
+        print(f"[의원 발의 법안 개수: {len(df_bills_congressman)}]")
+
+        # 제외할 컬럼 목록
+        # TODO: 이 부분 로직 과연 필요한 것인지 검토하고 불필요하면 삭제
+        columns_to_drop = ['rstProposerNameList', 'ProposerName']
+        df_bills_congressman.drop(columns=columns_to_drop, inplace=True)
+
+        return df_bills_congressman
+
+    def process_chairman_bills(self, df_bills):
+        """ 위원장 발의 법안을 처리하는 함수
+        """
         pass
 
     def process_gov_bills(self):
