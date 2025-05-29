@@ -1048,6 +1048,9 @@ class DataProcessor:
         self.output_data = None
     
     def process_congressman_bills(self):
+
+        
+
         pass
 
     def process_chairman_bills(self):
@@ -1130,8 +1133,25 @@ class DataProcessor:
     def merge_bills_df(self):
         pass
 
-    def remove_duplicates(self):
-        pass
+    def remove_duplicates(self, DBManager):
+        print("\n[DB와의 중복 데이터 제거 중...]")
+
+        # 법안 ID 리스트 추출
+        bill_ids = df['billId'].tolist()
+
+        # 기존 법안 ID 조회
+        existing_ids = DBManager.get_existing_bill_ids(bill_ids)
+
+        # 데이터프레임에서 DB에 존재하지 않는 법안 ID만 남기기
+        df_bills = df[~df['billId'].isin(existing_ids)]
+        
+        # 중복 처리 결과 출력
+        print(f"[총 {len(df)}개의 법안 데이터 중 {len(df_bills)}개의 새로운 법안 데이터 발견됨.]")
+
+        print(df_bills['proposeDate'].value_counts())
+
+        return df_bills
+
 
 
 
