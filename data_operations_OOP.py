@@ -1043,13 +1043,12 @@ class DataFetcher:
         return df_alternatives
 
 class DataProcessor:
-    def __init__(self, input_data):
-        self.input_data = input_data
+    def __init__(self):
+        self.input_data = None
         self.output_data = None
     
-    def process_congressman_bills(self):
-
-        
+    def process_congressman_bills(self, df_bills):
+        """의원 발의 법안을 처리하는 함수"""
 
         pass
 
@@ -1130,8 +1129,33 @@ class DataProcessor:
 
         return df_combined 
 
-    def merge_bills_df(self):
-        pass
+    def merge_bills_df(self, df_bills_content, df_bills_info):
+        print("\n[데이터프레임 병합 진행 중...]")
+        # 'billNumber' 컬럼을 기준으로 두 데이터프레임을 병합
+        df_bills = pd.merge(df_bills_content, df_bills_info, on='billNumber', how='inner')
+
+        # BILL_NO가 중복되는 행 제거
+        # df_bills = df_bills.drop_duplicates(subset='BILL_NO', keep='first')
+        
+        #billNumber가 중복되는 행 중 proposers가 '대통령'인 행 제거 => 대통령 거부권 행사한 법안 중복 제거
+        df_bills = df_bills[~((df_bills['proposers'] == '대통령') & (df_bills['billNumber'].duplicated()))]
+
+        # BILL_ID 결측치가 있는 행 제거
+        df_bills = df_bills.dropna(subset=['billId'])
+
+        #인덱스 재설정
+        df_bills.reset_index(drop=True, inplace=True)
+        
+        print("데이터프레임 병합 완료")
+        print(f"{len(df_bills)} 개의 법안 데이터 병합됨.")
+        
+        df_bills['briefSummary'] = None
+        df_bills['gptSummary'] = None
+        print("\n[AI 요약 데이터 컬럼 추가 완료]")
+        
+        print(df_bills['proposeDate'].value_counts())
+        
+        return df_bills
 
     def remove_duplicates(self, DBManager):
         print("\n[DB와의 중복 데이터 제거 중...]")
