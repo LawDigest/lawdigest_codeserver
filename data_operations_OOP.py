@@ -1043,17 +1043,18 @@ class DataFetcher:
         return df_alternatives
 
 class DataProcessor:
+    # TODO: 제대로 작동하는지 테스트 필요
+
     def __init__(self):
         self.input_data = None
         self.output_data = None
     
-    def process_congressman_bills(self, df_bills, df_coactors):
+    def process_congressman_bills(self, df_bills, fetcher):
         """의원 발의 법안을 처리하는 함수
         
         Args:
             df_bills (pd.DataFrame) : 수집한 법안 데이터
-            df_coactors (pd.DataFrame) : 수집한 공동발의자 데이터
-        
+            fetcher (DataFetcher) : 데이터 수집용 객체 - 공동발의자 데이터 수집 위해 필요
         Return:
             df_bills_congressman (pd.DataFrame) : 처리된 의원 발의 법안 데이터
         """
@@ -1065,6 +1066,9 @@ class DataProcessor:
         
          # df_bills_congressman에 발의자 정보 컬럼 머지
         print("\n[의원 발의자 데이터 병합 중...]")
+
+        df_coactors = fetcher.fetch_bills_coactors()
+
         df_bills_congressman = pd.merge(df_bills_congressman, df_coactors, on='billId', how='inner')
 
         print("[의원 발의자 데이터 병합 완료]")
@@ -1086,13 +1090,57 @@ class DataProcessor:
 
         return df_bills_congressman
 
-    def process_chairman_bills(self, df_bills):
+    def process_chairman_bills(self, df_bills, fetcher):
         """ 위원장 발의 법안을 처리하는 함수
+        
+        Args:
+            df_bills (pd.DataFrame) : 수집한 법안 데이터
+            fetcher (DataFetcher) : 데이터 수집용 객체 - 대안-법안 관계 수집 위해 필요
+
+        Returns:
+            df_bills_chairman (pd.DataFrame) : 처리된 위원장 발의 법안 데이터
+            df_alternatives (pd.DataFrame) : 위원장 발의 법안 데이터에 대한 대안-법안 포함관계 데이터
         """
+
+        df_bills_chair = df_bills[df_bills['proposerKind'] == '위원장'].copy()
+
+        if(len(df_bills_chair) == 0):
+            print("[위원장 발의 법안이 없습니다. 코드를 종료합니다.]")
+            return pd.DataFrame()
+
+        # 위원장안 - 포함된 의원 관계 데이터 수집
+        # TODO: df_alternatives 데이터 필요 - 어떻게 Fetch 해올지 고민
+
+
+        # df_bills_chair의 billName에서 (대안) 제거
+        df_bills_chair['billName'] = df_bills_chair['billName'].str.replace(r'\(대안\)', '', regex=True)
+
+
+        return df_bills_chair, df_alternatives
         pass
+        # TODO: 구현 완료되면 pass문 제거할 것
 
     def process_gov_bills(self):
+        """ 정부 발의 법안을 처리하는 함수
+
+        Args: 
+            df_bills (pd.DataFrame) : 수집한 법안 데이터
+        
+        Returns:
+            df_bills_gov (pd.DataFrame) : 처리된 정부 발의 법안 데이터
+        """
+    
+        df_bills_gov = df_bills[df_bills['proposerKind'] == '정부'].copy()
+
+        if(len(df_bills_gov) == 0):
+            print("[정부 발의 법안이 없습니다. 코드를 종료합니다.]")
+            return pd.DataFrame()
+
+        return df_bills_gov
+
         pass
+        # TODO: 구현 완료되면 pass문 제거할 것
+
 
     def process_by_proposer_type(self): 
         # TODO: 함수 최신화되었는지 검토 필요. 특히 공동발의자, 대표발의자 리스트 관련해서 필요한 로직만 남았는지 검토 
