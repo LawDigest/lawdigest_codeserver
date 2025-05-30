@@ -1143,7 +1143,7 @@ class DataProcessor:
 
 
     def process_by_proposer_type(self): 
-        # TODO: 함수 최신화되었는지 검토 필요. 특히 공동발의자, 대표발의자 리스트 관련해서 필요한 로직만 남았는지 검토 
+        # TODO: 위 발의자별 처리 함수들 구현 완료된 것 확인하고 나면 삭제할 레거시 코드
         """법안 발의자 유형별로 데이터를 그룹화하는 함수
 
         Args:
@@ -1233,13 +1233,14 @@ class DataProcessor:
         print("데이터프레임 병합 완료")
         print(f"{len(df_bills)} 개의 법안 데이터 병합됨.")
         
-        df_bills['briefSummary'] = None
-        df_bills['gptSummary'] = None
-        print("\n[AI 요약 데이터 컬럼 추가 완료]")
-        
         print(df_bills['proposeDate'].value_counts())
         
         return df_bills
+
+    def add_AI_summary_columns(self, df_bills):
+        df_bills['briefSummary'] = None
+        df_bills['gptSummary'] = None
+        print("\n[AI 요약 데이터 컬럼 추가 완료]")
 
     def remove_duplicates(self, DBManager):
         print("\n[DB와의 중복 데이터 제거 중...]")
