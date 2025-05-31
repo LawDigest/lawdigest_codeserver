@@ -507,18 +507,18 @@ class DataFetcher:
         return df_lawmakers
 
 
-    def fetch_bills_coactors(self):
+    def fetch_bills_coactors(self, df_bills=None):
             """
             billId를 사용하여 각 법안의 공동 발의자 명단을 수집하는 함수.
             """
 
             # `df_bills`가 없으면 `fetch_bills_content()`를 호출하여 자동으로 수집
-            if self.df_bills is None:
+            if df_bills is None:
                 print("✅ [INFO] 법안 공동발의자 명단 정보 수집 대상 bill_no 수집을 위해 법안 내용 API로부터 정보를 수집합니다.")
-                self.df_bills = self.fetch_bills_info()
+                df_bills = self.fetch_bills_info()
 
             # 데이터가 없으면 종료
-            if self.df_bills is None or self.df_bills.empty:
+            if df_bills is None or df_bills.empty:
                 print("❌ [ERROR] 법안 데이터가 없습니다.")
                 return None
 
@@ -527,10 +527,10 @@ class DataFetcher:
             # 국회의원 데이터 가져오기
             df_lawmakers = self.fetch_lawmakers_data()
 
-            print(f"📌 [INFO] 공동 발의자 정보 수집 시작... 총 {len(self.df_bills)} 개의 법안 대상")
+            print(f"📌 [INFO] 공동 발의자 정보 수집 시작... 총 {len(df_bills)} 개의 법안 대상")
             
             # 각 법안의 billId에 대해 공동 발의자 정보를 수집
-            for billId in tqdm(self.df_bills['billId']):
+            for billId in tqdm(df_bills['billId']):
                 url = f"http://likms.assembly.go.kr/bill/coactorListPopup.do?billId={billId}"
                 
                 # HTML 가져오기
@@ -1059,6 +1059,8 @@ class DataProcessor:
             df_bills_congressman (pd.DataFrame) : 처리된 의원 발의 법안 데이터
         """
         df_bills_congressman = df_bills[df_bills['proposerKind'] == '의원'].copy()
+
+        print(f"[의원 발의 법안 개수: {len(df_bills_congressman)}]")
         
         if(len(df_bills_congressman) == 0):
             print("[의원 발의 법안이 없습니다. 코드를 종료합니다.]")
