@@ -961,21 +961,21 @@ class DataFetcher:
         self.content = df_vote_party
         return df_vote_party
 
-    def fetch_bills_alternatives(self):
+    def fetch_bills_alternatives(self, df_bills):
         """
-        클래스 속성 self.df_bills를 기반으로 각 법안의 대안을 수집하고 반환하는 메서드.
+        df_bills를 기반으로 각 법안의 대안을 수집하고 반환하는 메서드.
 
         Returns:
         pd.DataFrame: 각 법안의 대안을 포함하는 데이터프레임
         """
 
         # df_bills 확인 및 자동 수집
-        if self.df_bills is None or self.df_bills.empty:
+        if df_bills is None or df_bills.empty:
             print("⚠️ [WARNING] 수집된 법안 데이터(self.df_bills)가 없습니다. 법안 내용을 먼저 수집합니다...")
-            self.df_bills = self.fetch_bills_info()
+            df_bills = self.fetch_bills_info()
 
             # 수집 후에도 df_bills가 없으면 종료
-            if self.df_bills is None or self.df_bills.empty:
+            if df_bills is None or df_bills.empty:
                 print("🚨 [WARNING] 법안 내용 데이터를 수집할 수 없습니다. 작업을 중단합니다.")
                 return None
 
@@ -1018,7 +1018,7 @@ class DataFetcher:
         print("📌 [INFO] 법안별 대안 데이터 수집 시작...")
 
         # tqdm을 사용하여 진행 상황 표시
-        for _, row in tqdm(self.df_bills.iterrows(), total=len(self.df_bills)):
+        for _, row in tqdm(df_bills.iterrows(), total=len(df_bills)):
             alt_id = row['billId']  # 대안(위원장안) ID
 
             # 대안 데이터 수집
@@ -1112,7 +1112,7 @@ class DataProcessor:
 
         # 위원장안 - 포함된 의원 관계 데이터 수집
         # TODO: df_alternatives 데이터 필요 - 어떻게 Fetch 해올지 고민
-
+        df_alternatives = fetcher.fetch_bills_alternatives(df_bills)
 
         # df_bills_chair의 billName에서 (대안) 제거
         df_bills_chair['billName'] = df_bills_chair['billName'].str.replace(r'\(대안\)', '', regex=True)
