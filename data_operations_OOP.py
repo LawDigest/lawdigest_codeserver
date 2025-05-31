@@ -106,25 +106,25 @@ class DatabaseManager:
             print("❌ [ERROR] Failed to fetch the latest status_update_date")
             print(e)
             return None
-
-        def get_existing_bill_ids(self):
-            """이미 존재하는 법안 ID 목록을 반환"""
-            query = "SELECT bill_id FROM bills"
-            results = self.execute_query(query)
-            return [row["bill_id"] for row in results] if results else []
     
-    def get_existing_bill_ids(self, bills_ids):
-        """데이터베이스에 이미 존재하는 법안 id를 반환하는 함수"""
-        
-        format_strings = ','.join(['%s'] * len(bill_ids))
+    def get_existing_bill_ids(self, bill_ids):
+            """데이터베이스에 이미 존재하는 법안 id를 반환하는 함수"""
 
-        query = f"SELECT {'bill_id'} FROM Bill WHERE {'bill_id'} IN ({format_strings})", tuple(bill_ids)
-        result = self.execute_query(query, fetch_one=False)
+            format_strings = ','.join(['%s'] * len(bill_ids)) 
 
-        # Extract IDs from the result
-        existing_ids = [row[0] for row in result]
-        
-        return existing_ids
+            # **수정된 부분:** query를 문자열로만 만들고, bill_ids 튜플을 params로 전달
+            query = f"SELECT {'bill_id'} FROM Bill WHERE {'bill_id'} IN ({format_strings})"
+            params = tuple(bill_ids) # 매개변수를 별도의 변수로 분리
+
+            result = self.execute_query(query, params=params, fetch_one=False) # params 인자를 명시적으로 전달
+            # print(result)
+
+            # Extract IDs from the result
+            existing_ids = [row['bill_id'] for row in result]
+
+            print(f"DB에 존재하는 법안 id 목록: {existing_ids}")
+
+            return existing_ids
 
     def close(self):
         """데이터베이스 연결 종료"""
@@ -1242,24 +1242,26 @@ class DataProcessor:
         df_bills['gptSummary'] = None
         print("\n[AI 요약 데이터 컬럼 추가 완료]")
 
-    def remove_duplicates(self, DBManager):
+        return df_bills
+
+    def remove_duplicates(self, df_bills, DBManager):
         print("\n[DB와의 중복 데이터 제거 중...]")
 
         # 법안 ID 리스트 추출
-        bill_ids = df['billId'].tolist()
+        bill_ids = df_bills['billId'].tolist()
 
         # 기존 법안 ID 조회
         existing_ids = DBManager.get_existing_bill_ids(bill_ids)
 
         # 데이터프레임에서 DB에 존재하지 않는 법안 ID만 남기기
-        df_bills = df[~df['billId'].isin(existing_ids)]
+        df_bills_dup_removed = df_bills[~df_bills['billId'].isin(existing_ids)]
         
         # 중복 처리 결과 출력
-        print(f"[총 {len(df)}개의 법안 데이터 중 {len(df_bills)}개의 새로운 법안 데이터 발견됨.]")
+        print(f"[총 {len(df_bills)}개의 법안 데이터 중 {len(df_bills_dup_removed)}개의 새로운 법안 데이터 발견됨.]")
 
-        print(df_bills['proposeDate'].value_counts())
+        print(df_bills_dup_removed['proposeDate'].value_counts())
 
-        return df_bills
+        return df_bills_dup_removed
 
 
 
