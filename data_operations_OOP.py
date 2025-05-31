@@ -1122,7 +1122,7 @@ class DataProcessor:
         pass
         # TODO: 구현 완료되면 pass문 제거할 것
 
-    def process_gov_bills(self):
+    def process_gov_bills(self, df_bills, fetcher):
         """ 정부 발의 법안을 처리하는 함수
 
         Args: 
@@ -1139,9 +1139,6 @@ class DataProcessor:
             return pd.DataFrame()
 
         return df_bills_gov
-
-        pass
-        # TODO: 구현 완료되면 pass문 제거할 것
 
 
     def process_by_proposer_type(self): 
