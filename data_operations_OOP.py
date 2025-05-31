@@ -1261,7 +1261,79 @@ class DataProcessor:
         print(df_bills_dup_removed['proposeDate'].value_counts())
 
         return df_bills_dup_removed
+    
+    # TODO: 컬럼 필터링 수행하는 함수 DataProcessor에 구현
+    def columns_selection(self):
+        pass
+
+# TODO: AISummarizer 구현
+class AISummarizer:
+
+    def __init__(self):
+        self.input_bills = None
+        self.output_data = None
+        self.client = None
+
+        # 환경변수 로드
+        load_dotenv()
+
+        # OpenAI Client 로드
+        client = OpenAI(
+        api_key=os.environ.get("APIKEY_OPENAI"),  # this is also the default, it can be omitted
+        )
+
+    def AI_title_summarize(df_bills, model=None):
+        pass
+
+    def AI_content_summarize(df_bills, model=None):
+        pass
+
+    def AI_model_test(date=None, title_model=None, content_model=None):
+        pass
 
 
+# TODO: APISender 구현
+class APISender:
+    def __init__(self):
+        self.post_url = None
+
+        pass
+
+    def request_post(url=None):
+        pass
+
+    def send_data(data, url, payload_name):
+        pass
 
 
+# TODO: WorkFlowManager 구현
+class WorkFlowManager:
+    def __init__(self):
+        self.subject = None
+        self.params = None
+        self.post_url = None
+        pass
+    
+    def update_data(self):
+        pass
+
+    def update_bills_data(self):
+        pass
+
+    def update_lawmakers_data(self):
+        pass
+
+    def update_bills_timeline(self):
+        pass
+
+    def update_bills_result(self):
+        pass
+
+    def update_bills_vote(self):
+        pass
+
+    def update_bills_alternatives(self):
+        pass
+
+    def update_commitee_info(self):
+        pass
