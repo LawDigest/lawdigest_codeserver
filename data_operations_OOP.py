@@ -1117,10 +1117,7 @@ class DataProcessor:
         # df_bills_chair의 billName에서 (대안) 제거
         df_bills_chair['billName'] = df_bills_chair['billName'].str.replace(r'\(대안\)', '', regex=True)
 
-
         return df_bills_chair, df_alternatives
-        pass
-        # TODO: 구현 완료되면 pass문 제거할 것
 
     def process_gov_bills(self, df_bills, fetcher):
         """ 정부 발의 법안을 처리하는 함수
@@ -1270,23 +1267,159 @@ class DataProcessor:
 class AISummarizer:
 
     def __init__(self):
-        self.input_bills = None
+        self.input_data = None
         self.output_data = None
-        self.client = None
+        self.proposer_type_list = ['congressman', 'chairman', 'gov']
+
+        # OpenAI Client 로드
+        self.client = OpenAI(
+        api_key=os.environ.get("APIKEY_OPENAI"),  # this is also the default, it can be omitted
+        )
 
         # 환경변수 로드
         load_dotenv()
 
-        # OpenAI Client 로드
-        client = OpenAI(
-        api_key=os.environ.get("APIKEY_OPENAI"),  # this is also the default, it can be omitted
-        )
+    def AI_title_summarize(self, df_bills=None, model=None):
+    
+        client = self.client
 
-    def AI_title_summarize(df_bills, model=None):
-        pass
+        if df_bills is None:
+            df_bills = self.input_data
+        
+        if model is None:
+            model = os.environ.get("TITLE_SUMMARIZATION_MODEL")    
+        
+        print("\n[AI 제목 요약 진행 중...]")
+        
+        # 'briefSummary' 컬럼이 공백이 아닌 경우에만 요약문을 추출하여 해당 컬럼에 저장
+        total = df_bills['briefSummary'].isnull().sum()
+        count = 0
+        show_count = 0
 
-    def AI_content_summarize(df_bills, model=None):
-        pass
+        for index, row in df_bills.iterrows():
+            count += 1
+            print(f"현재 진행률: {count}/{total} | {round(count/total*100, 2)}%")
+
+            content, title, id, proposer = row['summary'], row['billName'], row['billNumber'], row['proposers']
+            print('-'*10)
+            if not pd.isna(row['briefSummary']):
+                print(f"{title}에 대한 요약문이 이미 존재합니다.")
+                # clear_output()
+                continue  
+                # 이미 'SUMMARY', 'GPT_SUMMARY' 컬럼에 내용이 있으면 건너뜁니다
+
+            task = f"\n위 내용의 핵심을 40글자 이내로 짧게 요약한 제목을 작성할 것. 제목은 반드시 {title}으로 끝나야 함."
+            print(f"task: {task}")
+            print('-'*10)
+
+            messages = [
+                {"role": "system",
+                "content": "입력하는 법률개정안 내용의 핵심을 40글자 이내로 짧게 요약한 제목을 한 문장으로 작성할 것. 제목은 반드시 법률개정안 이름으로 끝나야 함.\n\n법률개정안의 내용을 한눈에 알아볼 수 있게 핵심을 요약한 제목을 작성. 반드시 '~하기 위한 ~법안'와 같은 형식으로 작성. 반드시 한 문장으로 작성. 법안의 취지를 중심으로 짧고 간결하게 요약\n"},          
+                {"role": "user", "content": str(content) + str(task)}
+            ]
+            
+            response = client.chat.completions.create(
+                model=model,  
+                messages=messages,
+            )
+            chat_response = response.choices[0].message.content
+
+            print(f"chatGPT: {chat_response}")
+
+            # 추출된 요약문을 'briefSummary' 컬럼에 저장
+            df_bills.loc[df_bills['billNumber'] == id, 'briefSummary'] = chat_response
+            show_count += 1
+
+            if show_count % 5 == 0:
+                clear_output()
+        
+        print(f"[법안 {count}건 요약 완료됨]")
+
+        clear_output()
+        
+        print("[AI 제목 요약 완료]")
+
+        self.output_data = df_bills
+
+        return df_bills
+
+    def AI_content_summarize(self, df_bills, proposer_type=None, model=None):
+
+        client = self.client
+
+        if model == None:
+            model = os.environ.get("CONTENT_SUMMARIZATION_MODEL")
+
+        assert proposer_type in self.proposer_type_list, f"[Error: 올바른 발의자 종류를 입력하세요]\n{self.proposer_type_list}"
+            
+            
+        print("\n[AI 내용 요약 진행 중...]")
+    
+        # 'gptSummary' 컬럼이 공백이 아닌 경우에만 요약문을 추출하여 해당 컬럼에 저장
+        total = df_bills['gptSummary'].isnull().sum()
+        count = 0
+        show_count = 0
+
+        for index, row in df_bills.iterrows():
+            count += 1
+            print(f"현재 진행률: {count}/{total} | {round(count/total*100, 2)}%")
+
+            content, title, id, proposer = row['summary'], row['billName'], row['billNumber'], row['proposers']
+            
+            print('-'*10)
+            if not pd.isna(row['gptSummary']):
+                print(f"{title}에 대한 요약문이 이미 존재합니다.")
+                # clear_output()
+                continue  
+                # 이미 'SUMMARY', 'gptSummary' 컬럼에 내용이 있으면 건너뜁니다
+
+            task = f"\n위 내용은 {title}이야. 이 법률개정안에서 무엇이 달라졌는지 쉽게 요약해줘."
+            print(f"task: {task}")
+            print('-'*10)
+
+            if proposer_type == 'congressman': # 의원 발의법안일 경우
+                messages = [
+                    {"role": "system",
+                    "content": f"너는 법률개정안을 이해하기 쉽게 요약해서 알려줘야 해. 반드시 \"{proposer} 의원이 발의한 {title}의 내용 및 목적은 다음과 같습니다:\"로 문장을 시작해. 1. 2. 3. 이렇게 쉽게 요약하고, 마지막은 법안의 취지를 설명해."}, 
+                    {"role": "user", "content": str(content) + str(task)}
+                ]
+            elif proposer_type == 'chairman':   # 위원장 발의법안인 경우
+                messages = [
+                    {"role": "system",
+                    "content": f"너는 법률개정안을 이해하기 쉽게 요약해서 알려줘야 해. 반드시 \"{proposer}이 발의한 {title}의 내용 및 목적은 다음과 같습니다:\"로 문장을 시작해. 1. 2. 3. 이렇게 쉽게 요약하고, 마지막은 법안의 취지를 설명해."}, 
+                    {"role": "user", "content": str(content) + str(task)}
+                ]
+            elif proposer_type == 'gov': # 정부 발의법안인 경우
+                messages = [
+                    {"role": "system",
+                    "content": f"너는 법률개정안을 이해하기 쉽게 요약해서 알려줘야 해. 반드시 \"대한민국 {proposer}가 발의한 {title}의 내용 및 목적은 다음과 같습니다:\"로 문장을 시작해. 1. 2. 3. 이렇게 쉽게 요약하고, 마지막은 법안의 취지를 설명해."}, 
+                    {"role": "user", "content": str(content) + str(task)}
+                ]
+
+            response = client.chat.completions.create(
+                model=model,
+                messages=messages,
+            )
+            chat_response = response.choices[0].message.content
+
+            print(f"chatGPT: {chat_response}")
+
+            # 추출된 요약문을 'gptSummary' 컬럼에 저장
+            df_bills.loc[df_bills['billNumber'] == id, 'gptSummary'] = chat_response
+            show_count += 1
+
+            if show_count % 5 == 0:
+                clear_output()
+        
+        print(f"[법안 {count}건 요약 완료됨]")
+
+        clear_output()
+        
+        print("[AI 내용 요약 완료]")
+
+        self.output_data = df_bills
+
+        return df_bills
 
     def AI_model_test(date=None, title_model=None, content_model=None):
         pass
