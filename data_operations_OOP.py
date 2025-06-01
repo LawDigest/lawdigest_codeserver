@@ -1430,13 +1430,69 @@ class APISender:
     def __init__(self):
         self.post_url = None
 
-        pass
 
     def request_post(url=None):
-        pass
+
+        if url == None:
+            print("URL을 입력해주세요.")
+            return None
+        
+        try:
+            response = requests.post(url)
+
+            # 응답 확인
+            if response.status_code == 200:
+                print(f'서버 요청 성공: {url}')
+                print('응답 데이터:', response.json())
+            else:
+                print(f'서버 요청 실패: {url}')
+                print('상태 코드:', response.status_code)
+                print('응답 내용:', response.text)
+            
+            return response
+        except Exception as e:
+            print(f"서버 요청 중 오류 발생: {e}")
 
     def send_data(data, url, payload_name):
-        pass
+        """
+        데이터를 JSON 형식으로 변환하여 API 서버로 전송하는 함수.
+
+        Parameters:
+        - data: pandas.DataFrame 또는 dict, 전송할 데이터
+        - payload_name: str, payload의 이름 (예: "lawmakerDfRequestList")
+        - url: str, 데이터를 전송할 API 엔드포인트 URL
+
+        Returns:
+        - response: requests.Response, API 서버로부터 받은 응답 객체
+        """
+        if isinstance(data, pd.DataFrame):
+            # DataFrame을 JSON 형식으로 변환
+            data = data.to_dict(orient='records')
+        
+        # payload 생성
+        payload = {payload_name: data}
+        
+        # 헤더 설정
+        headers = {
+            'Content-Type': 'application/json',
+        }
+
+        # POST 요청 보내기
+        try:
+            response = requests.post(url, headers=headers, json=payload)
+
+            # 응답 확인
+            if response.status_code == 200:
+                print(f'데이터 전송 성공: {url}')
+                print('응답 데이터:', response.json())
+            else:
+                print(f'데이터 전송 실패: {url}')
+                print('상태 코드:', response.status_code)
+                print('응답 내용:', response.text)
+            
+            return response
+        except Exception as e:
+            print(f"데이터 전송 중 오류 발생: {e}")
 
 
 # TODO: WorkFlowManager 구현
