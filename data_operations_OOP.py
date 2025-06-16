@@ -13,7 +13,6 @@ from bs4 import BeautifulSoup
 import re
 from tqdm import tqdm
 import sys
-
 import pymysql
 import os
 from dotenv import load_dotenv
@@ -134,9 +133,7 @@ class DatabaseManager:
 
 
 class DataFetcher:
-    def __init__(self, subject, params=None, url=None, filter_data=True):
-        
-        self.subject = str(subject) # 수집대상
+    def __init__(self, params, subject=None, url=None, filter_data=True):
         if params == None:
             self.params = {}
         else:
@@ -147,13 +144,14 @@ class DataFetcher:
         self.df_bills = None
         self.df_lawmakers = None
         self.df_vote = None
+        self.subject = subject
 
         load_dotenv()
         
-        self.content = self.fetch_data()
+        self.content = self.fetch_data(self.subject)
 
-    def fetch_data(self):
-        match self.subject:
+    def fetch_data(self, subject):
+        match subject:
             case "bill_info":
                 return self.fetch_bills_info()
             case "bill_content":
@@ -172,8 +170,10 @@ class DataFetcher:
                 return self.fetch_vote_party()
             case "alternative_bill":
                 return self.fetch_bills_alternatives()
+            case None:
+                return None
             case _:
-                print(f"❌ [ERROR] '{self.subject}' is not a valid subject.")
+                print(f"❌ [ERROR] '{subject}' is not a valid subject.")
                 return None
         
     def fetch_bills_content(self):
@@ -1043,13 +1043,11 @@ class DataFetcher:
         return df_alternatives
 
 class DataProcessor:
-    # TODO: 제대로 작동하는지 테스트 필요
 
-    def __init__(self):
-        self.input_data = None
-        self.output_data = None
+    def __init__(self, fetcher):
+        self.fetcher = fetcher
     
-    def process_congressman_bills(self, df_bills, fetcher):
+    def process_congressman_bills(self, df_bills):
         """의원 발의 법안을 처리하는 함수
         
         Args:
@@ -1069,7 +1067,7 @@ class DataProcessor:
          # df_bills_congressman에 발의자 정보 컬럼 머지
         print("\n[의원 발의자 데이터 병합 중...]")
 
-        df_coactors = fetcher.fetch_bills_coactors()
+        df_coactors = self.fetcher.fetch_bills_coactors()
 
         df_bills_congressman = pd.merge(df_bills_congressman, df_coactors, on='billId', how='inner')
 
@@ -1092,7 +1090,7 @@ class DataProcessor:
 
         return df_bills_congressman
 
-    def process_chairman_bills(self, df_bills, fetcher):
+    def process_chairman_bills(self, df_bills):
         """ 위원장 발의 법안을 처리하는 함수
         
         Args:
@@ -1112,14 +1110,14 @@ class DataProcessor:
 
         # 위원장안 - 포함된 의원 관계 데이터 수집
         # TODO: df_alternatives 데이터 필요 - 어떻게 Fetch 해올지 고민
-        df_alternatives = fetcher.fetch_bills_alternatives(df_bills)
+        df_alternatives = self.fetcher.fetch_bills_alternatives(df_bills)
 
         # df_bills_chair의 billName에서 (대안) 제거
         df_bills_chair['billName'] = df_bills_chair['billName'].str.replace(r'\(대안\)', '', regex=True)
 
         return df_bills_chair, df_alternatives
 
-    def process_gov_bills(self, df_bills, fetcher):
+    def process_gov_bills(self, df_bills):
         """ 정부 발의 법안을 처리하는 함수
 
         Args: 
@@ -1136,78 +1134,6 @@ class DataProcessor:
             return pd.DataFrame()
 
         return df_bills_gov
-
-
-    def process_by_proposer_type(self): 
-        # TODO: 위 발의자별 처리 함수들 구현 완료된 것 확인하고 나면 삭제할 레거시 코드
-        """법안 발의자 유형별로 데이터를 그룹화하는 함수
-
-        Args:
-            input_data (pd.DataFrame): 법안 데이터
-
-        Returns:
-            dict: 법안 발의자 유형별로 그룹화된 데이터
-        """
-        df_bills = self.input_data
-
-        # 법안 발의주체별 분리
-        df_bills_congressman = df_bills[df_bills['proposerKind'] == '의원'].copy()
-        df_bills_chair = df_bills[df_bills['proposerKind'] == '위원장'].copy()
-        df_bills_gov = df_bills[df_bills['proposerKind'] == '정부'].copy()
-        
-        if(len(df_bills_congressman) == 0 and len(df_bills_chair) == 0):
-            print("의원 혹은 위원장이 발의한 법안이 없습니다. 코드를 종료합니다.")
-            return pd.DataFrame()
-
-        if len(df_bills_chair) > 0: # 위원장 발의 법안이 존재하는 경우
-
-            print("위원장 발의 법안 존재 - 대안 관계 데이터 수집")
-            df_alternatives = fetch_bills_alternatives(df_bills_chair)
-
-        # df_bills_congressman 처리
-        
-        # df_bills_congressman에 발의자 정보 컬럼 머지
-        print("\n[의원 발의자 데이터 수집 및 병합 중...]")
-        df_coactors = fetch_bills_coactors(df_bills_congressman)  
-        df_bills_congressman = pd.merge(df_bills_congressman, df_coactors, on='billId', how='inner')
-
-        print("[의원 발의자 데이터 수집 및 병합 완료]")
-        
-        def get_proposer_codes(row):
-            name_list_length = len(row['rstProposerNameList'])
-            return row['publicProposerIdList'][:name_list_length]
-
-        # 새로운 컬럼 rstProposerIdList에 publicProposerIdList 리스트에서 슬라이싱한 값 추가
-        print(df_bills_congressman.info())
-        df_bills_congressman['rstProposerIdList'] = df_bills_congressman.apply(get_proposer_codes, axis=1)
-        
-        # df_bills_chair의 billName에서 (대안) 제거
-        df_bills_chair['billName'] = df_bills_chair['billName'].str.replace(r'\(대안\)', '', regex=True)
-        
-        #df_bills_chair에 발의자 정보 빈 리스트로 추가
-        # df_bills_chair['rstProposerNameList'] = ""
-        # df_bills_chair['rstProposerPartyNameList'] = ""
-        # df_bills_chair['publicProposers'] = ""
-        
-        # df_bills_gov에 발의자 정보 빈 리스트로 추가
-        # df_bills_gov['rstProposerNameList'] = ""
-        # df_bills_gov['rstProposerPartyNameList'] = ""
-        # df_bills_gov['publicProposers'] = ""
-        
-        # 모든 데이터프레임을 하나로 합치기
-        print("\n[모든 데이터프레임 병합 중...]")
-        df_combined = pd.concat([df_bills_congressman, df_bills_chair], ignore_index=True)
-        
-        print(f"[병합된 데이터프레임 크기: {len(df_combined)}행]")
-        print(f"[의원 발의: {len(df_bills_congressman)}행, 위원장 발의: {len(df_bills_chair)}행]")
-        
-        # 제외할 컬럼 목록
-        columns_to_drop = ['rstProposerNameList', 'ProposerName']
-        df_combined.drop(columns=columns_to_drop, inplace=True)
-        
-        self.output_data = df_combined
-
-        return df_combined 
 
     def merge_bills_df(self, df_bills_content, df_bills_info):
         print("\n[데이터프레임 병합 진행 중...]")
@@ -1269,7 +1195,12 @@ class AISummarizer:
     def __init__(self):
         self.input_data = None
         self.output_data = None
-        self.proposer_type_list = ['congressman', 'chairman', 'gov']
+        self.proposer_type_list = ['congressman', 'chairman', 'gov'] # TODO: 자동 발의자 구분 인식 구현 이후 제거
+        self.prompt_dict = {
+            '의원':  "너는 법률개정안을 이해하기 쉽게 요약해서 알려줘야 해. 반드시 \"{proposer}이 발의한 {title}의 내용 및 목적은 다음과 같습니다:\"로 문장을 시작해. 1.핵심 내용: 설명 2.핵심 내용: 설명 3.핵심 내용: 설명 이렇게 쉽게 요약하고, 마지막은 법안의 취지를 설명해. 핵심 내용은 볼드체 처리해.",
+            '위원장': "너는 법률개정안을 이해하기 쉽게 요약해서 알려줘야 해. 반드시 \"{proposer}이 발의한 {title}의 내용 및 목적은 다음과 같습니다:\"로 문장을 시작해. 1.핵심 내용: 설명 2.핵심 내용: 설명 3.핵심 내용: 설명 이렇게 쉽게 요약하고, 마지막은 법안의 취지를 설명해. 핵심 내용은 볼드체 처리해.",
+            '정부':  "너는 법률개정안을 이해하기 쉽게 요약해서 알려줘야 해. 반드시 \"대한민국 {proposer}가 발의한 {title}의 내용 및 목적은 다음과 같습니다:\"로 문장을 시작해. 1.핵심 내용: 설명 2.핵심 내용: 설명 3.핵심 내용: 설명 이렇게 쉽게 요약하고, 마지막은 법안의 취지를 설명해. 핵심 내용은 볼드체 처리해."
+        }
 
         # OpenAI Client 로드
         self.client = OpenAI(
@@ -1279,12 +1210,9 @@ class AISummarizer:
         # 환경변수 로드
         load_dotenv()
 
-    def AI_title_summarize(self, df_bills=None, model=None):
+    def AI_title_summarize(self, df_bills, model=None):
     
         client = self.client
-
-        if df_bills is None:
-            df_bills = self.input_data
         
         if model is None:
             model = os.environ.get("TITLE_SUMMARIZATION_MODEL")    
@@ -1343,82 +1271,78 @@ class AISummarizer:
 
         return df_bills
 
-    def AI_content_summarize(self, df_bills, proposer_type=None, model=None):
-
+    def AI_content_summarize(self, df_bills, model=None):
+        """
+        df_bills를 입력받아 'proposerKind' 컬럼을 기준으로 발의주체별 프롬프트를 자동으로 적용하여 AI 요약을 생성합니다.
+        """
         client = self.client
 
-        if model == None:
+        if model is None:
             model = os.environ.get("CONTENT_SUMMARIZATION_MODEL")
 
-        assert proposer_type in self.proposer_type_list, f"[Error: 올바른 발의자 종류를 입력하세요]\n{self.proposer_type_list}"
-            
-            
         print("\n[AI 내용 요약 진행 중...]")
-    
-        # 'gptSummary' 컬럼이 공백이 아닌 경우에만 요약문을 추출하여 해당 컬럼에 저장
-        total = df_bills['gptSummary'].isnull().sum()
-        count = 0
-        show_count = 0
 
-        for index, row in df_bills.iterrows():
+        rows_to_process = df_bills[df_bills['gptSummary'].isnull()]
+        total = len(rows_to_process)
+        
+        if total == 0:
+            print("[모든 법안에 대한 AI 요약이 이미 존재합니다.]")
+            self.output_data = df_bills
+            return df_bills
+
+        count = 0
+        
+        for index, row in rows_to_process.iterrows():
             count += 1
             print(f"현재 진행률: {count}/{total} | {round(count/total*100, 2)}%")
 
-            content, title, id, proposer = row['summary'], row['billName'], row['billNumber'], row['proposers']
+            content, title, bill_id, proposer = row['summary'], row['billName'], row['billNumber'], row['proposers']
+            proposer_kind = row['proposerKind'] # '의원', '위원장', '정부'
             
             print('-'*10)
-            if not pd.isna(row['gptSummary']):
-                print(f"{title}에 대한 요약문이 이미 존재합니다.")
-                # clear_output()
-                continue  
-                # 이미 'SUMMARY', 'gptSummary' 컬럼에 내용이 있으면 건너뜁니다
+            
+            # 1. 'proposerKind' 값을 키로 사용해 prompt_dict에서 직접 템플릿 가져오기
+            #    .get()을 사용하여 해당 키가 없는 경우에도 오류 없이 안전하게 처리합니다.
+            prompt_template = self.prompt_dict.get(proposer_kind)
+            
+            if not prompt_template:
+                print(f"경고: '{proposer_kind}'에 해당하는 프롬프트 템플릿이 없습니다. (법안: {title})")
+                continue
 
-            task = f"\n위 내용은 {title}이야. 이 법률개정안에서 무엇이 달라졌는지 쉽게 요약해줘."
+            # 2. 선택된 프롬프트 템플릿 포맷팅
+            system_prompt = prompt_template.format(proposer=proposer, title=title)
+            
+            task = f"\n위 내용은 {title}이야. 이 법률개정안에서 무엇이 달라졌는지 제안이유 및 주요내용을 쉽게 요약해줘."
             print(f"task: {task}")
             print('-'*10)
+            
+            messages = [
+                {"role": "system", "content": system_prompt}, 
+                {"role": "user", "content": str(content) + str(task)}
+            ]
 
-            if proposer_type == 'congressman': # 의원 발의법안일 경우
-                messages = [
-                    {"role": "system",
-                    "content": f"너는 법률개정안을 이해하기 쉽게 요약해서 알려줘야 해. 반드시 \"{proposer} 의원이 발의한 {title}의 내용 및 목적은 다음과 같습니다:\"로 문장을 시작해. 1. 2. 3. 이렇게 쉽게 요약하고, 마지막은 법안의 취지를 설명해."}, 
-                    {"role": "user", "content": str(content) + str(task)}
-                ]
-            elif proposer_type == 'chairman':   # 위원장 발의법안인 경우
-                messages = [
-                    {"role": "system",
-                    "content": f"너는 법률개정안을 이해하기 쉽게 요약해서 알려줘야 해. 반드시 \"{proposer}이 발의한 {title}의 내용 및 목적은 다음과 같습니다:\"로 문장을 시작해. 1. 2. 3. 이렇게 쉽게 요약하고, 마지막은 법안의 취지를 설명해."}, 
-                    {"role": "user", "content": str(content) + str(task)}
-                ]
-            elif proposer_type == 'gov': # 정부 발의법안인 경우
-                messages = [
-                    {"role": "system",
-                    "content": f"너는 법률개정안을 이해하기 쉽게 요약해서 알려줘야 해. 반드시 \"대한민국 {proposer}가 발의한 {title}의 내용 및 목적은 다음과 같습니다:\"로 문장을 시작해. 1. 2. 3. 이렇게 쉽게 요약하고, 마지막은 법안의 취지를 설명해."}, 
-                    {"role": "user", "content": str(content) + str(task)}
-                ]
+            try:
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                )
+                chat_response = response.choices[0].message.content
+                print(f"chatGPT: {chat_response}")
+                
+                df_bills.loc[index, 'gptSummary'] = chat_response
+            except Exception as e:
+                print(f"[API 호출 오류] 법안: {title}, 오류: {e}")
+                continue
 
-            response = client.chat.completions.create(
-                model=model,
-                messages=messages,
-            )
-            chat_response = response.choices[0].message.content
-
-            print(f"chatGPT: {chat_response}")
-
-            # 추출된 요약문을 'gptSummary' 컬럼에 저장
-            df_bills.loc[df_bills['billNumber'] == id, 'gptSummary'] = chat_response
-            show_count += 1
-
-            if show_count % 5 == 0:
-                clear_output()
+            if count % 5 == 0 and count < total:
+                # clear_output(wait=True)
+                pass
         
-        print(f"[법안 {count}건 요약 완료됨]")
-
-        clear_output()
-        
+        # clear_output()
+        print(f"\n[법안 {count}건 요약 완료됨]")
         print("[AI 내용 요약 완료]")
 
         self.output_data = df_bills
-
         return df_bills
 
     def AI_model_test(date=None, title_model=None, content_model=None):
@@ -1431,7 +1355,7 @@ class APISender:
         self.post_url = None
 
 
-    def request_post(url=None):
+    def request_post(self, url=None):
 
         if url == None:
             print("URL을 입력해주세요.")
@@ -1453,7 +1377,7 @@ class APISender:
         except Exception as e:
             print(f"서버 요청 중 오류 발생: {e}")
 
-    def send_data(data, url, payload_name):
+    def send_data(self, data, url, payload_name):
         """
         데이터를 JSON 형식으로 변환하여 API 서버로 전송하는 함수.
 
@@ -1501,13 +1425,131 @@ class WorkFlowManager:
         self.subject = None
         self.params = None
         self.post_url = None
-        pass
-    
-    def update_data(self):
-        pass
+        
+        load_dotenv()
 
-    def update_bills_data(self):
-        pass
+    def update_bills_data(self, start_date=None, end_date=None, mode=None, age=None):
+        """법안 데이터를 수집해 AI 요약 후 API 서버로 전송하는 함수
+
+        Args:
+            start_date (str, optional): 시작 날짜 (YYYY-MM-DD 형식). Defaults to None.
+            end_date (str, optional): 종료 날짜 (YYYY-MM-DD 형식). Defaults to None.
+            mode (str, optional): 실행 모드. Defaults to 'test'. 가능 모드: 'update', 'local', 'test', 'save'.
+            age (str, optional): 국회 데이터 수집 대수
+
+        Returns:
+            pd.DataFrame: 전송된 데이터프레임
+        """
+        print("[법안 데이터 수집 및 전송 시작]")
+
+        # 실행 모드 체크
+        if mode is None:
+            mode = print(input("실행 모드를 선택해주세요. remote | local | test | save | fetch"))
+            
+            if mode not in ['remote', 'local', 'test', 'save', 'fetch']:
+                print("올바른 모드를 선택해주세요. remote | local | test | save | fetch")
+                return None
+        
+        # 데이터 수집 기간 설정
+        if start_date is None:
+            # DB에 연결하여 현재 가장 최신 법안 날짜 가져오기
+            try:
+                DBconn = DataBaseManager()
+                latest_propose_dt = DBconn.get_latest_propose_data()
+
+                #DB에서 최신 법안 날짜 가져오는데 실패한 경우
+                if latest_propose_dt is None:
+                    raise ValueError("DB에서 최신 법안 날짜를 가져올 수 없습니다. 데이터가 비어있을 수 있습니다.")
+
+                start_date = latest_propose_dt
+
+            # DB 연결이나 쿼리 자체에서 오류가 발생한 경우
+            except Exception as e:
+                # 원본 에러(e)를 포함하여 새로운 에러를 발생시키면 디버깅에 용이합니다.
+                raise ConnectionError(f"데이터베이스 조회 중 오류가 발생했습니다: {e}")
+
+        if end_date is None:
+            end_date = datetime.now().strftime('%Y-%m-%d')
+
+        if age is None:
+            age = os.getenv("AGE")
+
+        
+        params = {
+            'start_date': start_date,
+            'end_date': end_date,
+            'age': age
+        }
+        
+        # 1. 데이터 받아오기
+        fetcher = DataFetcher(params)
+
+        bills_content_data = fetcher.fetch_data('bill_content')
+        bills_info_data = fetcher.fetch_data('bill_info')
+
+        # 2. 데이터 처리
+        processor = DataProcessor(fetcher)
+        
+        # 법안 데이터 머지
+        df_bills = processor.merge_bills_df(bills_content_data, bills_info_data)
+
+        # 중복 데이터 제거
+        processor.remove_duplicates(df_bills)
+
+        if len(df_bills) == 0:
+            print("새로운 데이터가 없습니다. 코드를 종료합니다.")
+            return None
+
+        # AI 요약 컬럼 추가
+        processor.add_AI_summary_columns(df_bills)
+
+        # 의원 데이터 처리
+        df_bills_congressman = processor.process_congressman_bills(df_bills)
+
+        # 위원장 데이터 처리
+        df_bills_chair = processor.process_chairman_bills(df_bills)
+
+        # 정부 데이터 처리
+        df_bills_gov = processor.process_gov_bills(df_bills)
+
+        # 발의주체별 법안 데이터 합치기
+        df_bills = pd.concat([df_bills_congressman, df_bills_chair, df_bills_gov], ignore_index=True)
+
+        # 3. 데이터 AI 요약 및 전송(모드별 처리)
+        payload_name = os.environ.get("PAYLOAD_bills")
+        url = os.environ.get("POST_URL_bills")
+
+        summerizer = AISummerizer()
+        sender = APISender()
+
+        if mode == 'remote':
+            print("[데이터 요약 및 전송 시작]")
+            
+            # 제목 요약
+            summerizer.AI_title_summarize(df_bills)
+
+            # 내용 요약
+            # TODO: 내용요약 메서드 구조 개선하고 여기서부터 작업 재개할것
+            summerizer.AI_content_summarize(df_bills)
+
+
+            print("[정당별 법안 발의수 갱신 요청 중...]")
+            post_url_party_bill_count = os.environ.get("POST_URL_party_bill_count")
+            request_post(post_url_party_bill_count)
+            print("[정당별 법안 발의수 갱신 요청 완료]")
+            
+            print("[의원별 최신 발의날짜 갱신 요청 중...]")
+            post_ulr_congressman_propose_date = os.environ.get("POST_URL_congressman_propose_date")
+            request_post(post_ulr_congressman_propose_date)
+            print("[의원별 최신 발의날짜 갱신 요청 완료]")
+
+
+
+
+        
+
+
+
 
     def update_lawmakers_data(self):
         pass
