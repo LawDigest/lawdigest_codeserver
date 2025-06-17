@@ -1552,7 +1552,86 @@ class WorkFlowManager:
 
 
     def update_lawmakers_data(self):
-        pass
+        """국회의원 데이터를 수집하고 모드에 따라 전송 또는 저장하는 메서드"""
+
+        print("\n[의원 데이터 수집 시작]")
+
+        # 데이터 수집
+        fetcher = DataFetcher(params=None)
+        df_lawmakers = fetcher.fetch_data('lawmakers')
+
+        if df_lawmakers is None or df_lawmakers.empty:
+            print("❌ [ERROR] 수집된 의원 데이터가 없습니다.")
+            return None
+
+        # 필요 없는 컬럼 제거
+        columns_to_drop = [
+            'ENG_NM',       # 영문이름
+            'HJ_NM',        # 한자이름
+            'BTH_GBN_NM',   # 음력/양력 구분
+            'ELECT_GBN_NM', # 선거구 구분(지역구/비례)
+            'STAFF',        # 보좌관
+            'CMITS',        # 소속위원회 목록
+            'SECRETARY',    # 비서관
+            'SECRETARY2',   # 비서
+            'JOB_RES_NM',   # 직위
+        ]
+
+        df_lawmakers = df_lawmakers.drop(columns=columns_to_drop)
+
+        # UNITS 컬럼에서 숫자만 추출하여 대수 정보로 사용
+        df_lawmakers['UNITS'] = df_lawmakers['UNITS'].str.extract(r'(\d+)(?=\D*$)').astype(int)
+
+        # 컬럼명 매핑
+        column_mapping = {
+            'MONA_CD': 'congressmanId',
+            'HG_NM': 'congressmanName',
+            'CMIT_NM': 'commits',
+            'POLY_NM': 'partyName',
+            'REELE_GBN_NM': 'elected',
+            'HOMEPAGE': 'homepage',
+            'ORIG_NM': 'district',
+            'UNITS': 'assemblyNumber',
+            'BTH_DATE': 'congressmanBirth',
+            'SEX_GBN_NM': 'sex',
+            'E_MAIL': 'email',
+            'ASSEM_ADDR': 'congressmanOffice',
+            'TEL_NO': 'congressmanTelephone',
+            'MEM_TITLE': 'briefHistory',
+        }
+
+        df_lawmakers.rename(columns=column_mapping, inplace=True)
+
+        # 모드별 처리
+        payload_name = os.getenv("PAYLOAD_lawmakers")
+        url = os.getenv("POST_URL_lawmakers")
+
+        sender = APISender()
+
+        mode = 'update' if self.params is None else self.params.get('mode', 'update')
+
+        if mode == 'update':
+            sender.send_data(df_lawmakers, url, payload_name)
+
+            print("[정당별 의원수 갱신 요청 중...]")
+            post_url_party_bill_count = os.environ.get("POST_URL_party_bill_count")
+            sender.request_post(post_url_party_bill_count)
+            print("[정당별 의원수 갱신 요청 완료]")
+
+        elif mode == 'local':
+            url = url.replace("https://api.lawdigest.net", "http://localhost:8080")
+            sender.send_data(df_lawmakers, url, payload_name)
+
+        elif mode == 'test':
+            print("[테스트 모드 : DB에 데이터를 전송하지 않습니다.]")
+
+        elif mode == 'save':
+            df_lawmakers.to_csv('df_lawmakers.csv', index=False)
+
+        else:
+            print("모드를 선택해주세요. update | local | test | save")
+
+        return df_lawmakers
 
     def update_bills_timeline(self):
         pass
