@@ -8,6 +8,7 @@ from .data_operations_OOP import (
     APISender,
     WorkFlowManager,
 )
+from .notifier import Notifier
 
 __all__ = [
     "DatabaseManager",
@@ -16,4 +17,5 @@ __all__ = [
     "AISummarizer",
     "APISender",
     "WorkFlowManager",
+    "Notifier",
 ]
