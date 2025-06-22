@@ -3,16 +3,8 @@ import pandas as pd
 from xml.etree import ElementTree
 import time
 from datetime import datetime, timedelta
-from IPython.display import clear_output
-from openai import OpenAI
-import json
 import os
-import pymysql
 from dotenv import load_dotenv
-from bs4 import BeautifulSoup
-import re
-from tqdm import tqdm
-import sys
 
 from .DataFetcher import DataFetcher
 from .DataProcessor import DataProcessor
@@ -125,7 +117,7 @@ class WorkFlowManager:
         payload_name = os.environ.get("PAYLOAD_bills")
         url = os.environ.get("POST_URL_bills")
 
-        summerizer = AISummerizer()
+        summerizer = AISummarizer()
         sender = APISender()
 
         if mode == 'remote':

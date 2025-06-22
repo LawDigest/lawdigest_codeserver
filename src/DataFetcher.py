@@ -6,15 +6,11 @@ from xml.etree import ElementTree
 import time
 from datetime import datetime, timedelta
 from IPython.display import clear_output
-from openai import OpenAI
-import json
 import os
-import pymysql
 from dotenv import load_dotenv
 from bs4 import BeautifulSoup
 import re
 from tqdm import tqdm
-import sys
 
 class DataFetcher:
     def __init__(self, params, subject=None, url=None, filter_data=True):
