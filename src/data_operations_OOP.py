@@ -6,6 +6,7 @@ from .DataProcessor import DataProcessor
 from .AISummarizer import AISummarizer
 from .APISender import APISender
 from .WorkFlowManager import WorkFlowManager
+from .notifier import Notifier
 
 __all__ = [
     "DatabaseManager",
@@ -14,4 +15,5 @@ __all__ = [
     "AISummarizer",
     "APISender",
     "WorkFlowManager",
+    "Notifier",
 ]
