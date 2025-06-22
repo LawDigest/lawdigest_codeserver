@@ -14,40 +14,53 @@ import re
 from tqdm import tqdm
 import sys
 
+from .DataFetcher import DataFetcher
+from .DataProcessor import DataProcessor
+from .AISummarizer import AISummarizer
+from .APISender import APISender
+from .DatabaseManager import DatabaseManager
+
 class WorkFlowManager:
-    def __init__(self, mode):
-        self.mode = None
+    def __init__(self, mode: str = 'remote'):
+        """Workflow manager initialization
+
+        Parameters
+        ----------
+        mode: str, optional
+            실행 모드. remote | local | test | save | fetch 중 하나.
+        """
         self.mode_list = ['remote', 'local', 'test', 'save', 'fetch']
+        if mode not in self.mode_list:
+            raise ValueError(
+                "올바른 모드를 선택해주세요. remote | local | test | save | fetch"
+            )
+        self.mode = mode
 
         load_dotenv()
 
-    def update_bills_data(self, start_date=None, end_date=None, mode=None, age=None):
+    def update_bills_data(self, start_date=None, end_date=None, age=None):
         """법안 데이터를 수집해 AI 요약 후 API 서버로 전송하는 함수
 
         Args:
             start_date (str, optional): 시작 날짜 (YYYY-MM-DD 형식). Defaults to None.
             end_date (str, optional): 종료 날짜 (YYYY-MM-DD 형식). Defaults to None.
-            mode (str, optional): 실행 모드. Defaults to 'test'. 가능 모드: 'update', 'local', 'test', 'save'.
             age (str, optional): 국회 데이터 수집 대수
+            
+        Note:
+            실행 모드는 클래스 생성 시 설정한 ``self.mode`` 값을 사용합니다.
 
         Returns:
             pd.DataFrame: 전송된 데이터프레임
         """
         print("[법안 데이터 수집 및 전송 시작]")
 
-        # 실행 모드 체크
-        if mode is None:
-            mode = print(input("실행 모드를 선택해주세요. remote | local | test | save | fetch"))
-            
-            if mode not in ['remote', 'local', 'test', 'save', 'fetch']:
-                print("올바른 모드를 선택해주세요. remote | local | test | save | fetch")
-                return None
+        mode = self.mode
         
         # 데이터 수집 기간 설정
         if start_date is None:
             # DB에 연결하여 현재 가장 최신 법안 날짜 가져오기
             try:
-                DBconn = DataBaseManager()
+                DBconn = DatabaseManager()
                 latest_propose_dt = DBconn.get_latest_propose_data()
 
                 #DB에서 최신 법안 날짜 가져오는데 실패한 경우
@@ -82,12 +95,12 @@ class WorkFlowManager:
 
         # 2. 데이터 처리
         processor = DataProcessor(fetcher)
-        
+
         # 법안 데이터 머지
         df_bills = processor.merge_bills_df(bills_content_data, bills_info_data)
 
         # 중복 데이터 제거
-        processor.remove_duplicates(df_bills)
+        processor.remove_duplicates(df_bills, DatabaseManager())
 
         if len(df_bills) == 0:
             print("새로운 데이터가 없습니다. 코드를 종료합니다.")
@@ -128,12 +141,12 @@ class WorkFlowManager:
 
             print("[정당별 법안 발의수 갱신 요청 중...]")
             post_url_party_bill_count = os.environ.get("POST_URL_party_bill_count")
-            request_post(post_url_party_bill_count)
+            sender.request_post(post_url_party_bill_count)
             print("[정당별 법안 발의수 갱신 요청 완료]")
             
             print("[의원별 최신 발의날짜 갱신 요청 중...]")
             post_ulr_congressman_propose_date = os.environ.get("POST_URL_congressman_propose_date")
-            request_post(post_ulr_congressman_propose_date)
+            sender.request_post(post_ulr_congressman_propose_date)
             print("[의원별 최신 발의날짜 갱신 요청 완료]")
 
 
@@ -195,9 +208,9 @@ class WorkFlowManager:
 
         sender = APISender()
 
-        mode = 'update' if self.params is None else self.params.get('mode', 'update')
+        mode = self.mode
 
-        if mode == 'update':
+        if mode == 'remote':
             sender.send_data(df_lawmakers, url, payload_name)
 
             print("[정당별 의원수 갱신 요청 중...]")
@@ -208,35 +221,29 @@ class WorkFlowManager:
         elif mode == 'local':
             url = url.replace("https://api.lawdigest.net", "http://localhost:8080")
             sender.send_data(df_lawmakers, url, payload_name)
-
+        
         elif mode == 'test':
             print("[테스트 모드 : DB에 데이터를 전송하지 않습니다.]")
 
         elif mode == 'save':
             df_lawmakers.to_csv('df_lawmakers.csv', index=False)
 
-        else:
-            print("모드를 선택해주세요. update | local | test | save")
-
         return df_lawmakers
 
-    def update_bills_timeline(self):
+    def update_bills_timeline(self, start_date=None, end_date=None, age=None):
         """의정활동(법안 처리 단계) 데이터를 수집하고 모드에 따라 전송 또는 저장하는 메서드"""
 
         # 기본 날짜 설정: DB에 저장된 최신 날짜 다음 날부터 오늘까지
-        if self.params is None or self.params.get('start_date') is None:
+        if start_date is None:
             DBconn = DatabaseManager()
             latest_date = DBconn.get_latest_timeline_date()
             start_date = latest_date.strftime('%Y-%m-%d') if latest_date else (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
-        else:
-            start_date = self.params.get('start_date')
 
-        if self.params is None or self.params.get('end_date') is None:
+        if end_date is None:
             end_date = datetime.now().strftime('%Y-%m-%d')
-        else:
-            end_date = self.params.get('end_date')
 
-        age = None if self.params is None else self.params.get('age')
+        if age is None:
+            age = os.getenv('AGE')
 
         params = {
             'start_date': start_date,
@@ -266,10 +273,7 @@ class WorkFlowManager:
 
         print("데이터 개수 : ", len(df_stage))
 
-        # 모드 설정
-        mode = 'remote'
-        if self.params is not None:
-            mode = self.params.get('mode', 'remote')
+        mode = self.mode
 
         payload_name = os.getenv('PAYLOAD_status')
         url = os.getenv('POST_URL_status')
@@ -313,25 +317,19 @@ class WorkFlowManager:
             df_stage.to_csv('bills_status.csv', index=False)
             print('[데이터 저장 완료]')
 
-        else:
-            print("올바른 모드를 선택해주세요. remote | local | test | save")
-
         return df_stage
 
-    def update_bills_result(self):
+    def update_bills_result(self, start_date=None, end_date=None, age=None):
         """법안 처리 결과 데이터를 수집하고 모드에 따라 전송 또는 저장하는 메서드"""
 
-        if self.params is None or self.params.get('start_date') is None:
+        if start_date is None:
             start_date = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
-        else:
-            start_date = self.params.get('start_date')
 
-        if self.params is None or self.params.get('end_date') is None:
+        if end_date is None:
             end_date = datetime.now().strftime('%Y-%m-%d')
-        else:
-            end_date = self.params.get('end_date')
 
-        age = None if self.params is None else self.params.get('age')
+        if age is None:
+            age = os.getenv('AGE')
 
         params = {
             'start_date': start_date,
@@ -357,9 +355,7 @@ class WorkFlowManager:
 
         print("데이터 개수 : ", len(df_result))
 
-        mode = 'remote'
-        if self.params is not None:
-            mode = self.params.get('mode', 'remote')
+        mode = self.mode
 
         payload_name = os.getenv('PAYLOAD_result')
         url = os.getenv('POST_URL_result')
@@ -388,25 +384,19 @@ class WorkFlowManager:
             df_result.to_csv('bills_result.csv', index=False)
             print('[데이터 저장 완료]')
 
-        else:
-            print("올바른 모드를 선택해주세요. remote | local | test | save")
-
         return df_result
 
-    def update_bills_vote(self):
+    def update_bills_vote(self, start_date=None, end_date=None, age=None):
         """본회의 표결 결과 데이터를 수집하고 모드에 따라 전송 또는 저장하는 메서드"""
 
-        if self.params is None or self.params.get('start_date') is None:
+        if start_date is None:
             start_date = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
-        else:
-            start_date = self.params.get('start_date')
 
-        if self.params is None or self.params.get('end_date') is None:
+        if end_date is None:
             end_date = datetime.now().strftime('%Y-%m-%d')
-        else:
-            end_date = self.params.get('end_date')
 
-        age = None if self.params is None else self.params.get('age')
+        if age is None:
+            age = os.getenv('AGE')
 
         params = {
             'start_date': start_date,
@@ -445,9 +435,7 @@ class WorkFlowManager:
 
         df_vote.rename(columns=column_mapping, inplace=True)
 
-        mode = 'remote'
-        if self.params is not None:
-            mode = self.params.get('mode', 'remote')
+        mode = self.mode
 
         payload_vote = os.getenv('PAYLOAD_vote')
         url_vote = os.getenv('POST_URL_vote')
@@ -469,8 +457,6 @@ class WorkFlowManager:
         elif mode == 'save':
             df_vote.to_csv('bills_vote.csv', index=False)
             print('[데이터 저장 완료]')
-        else:
-            print("올바른 모드를 선택해주세요. remote | local | test | save")
 
         if df_vote_party is None or df_vote_party.empty:
             print("❌ [ERROR] 정당별 표결 결과 데이터가 없습니다.")
@@ -494,17 +480,13 @@ class WorkFlowManager:
         elif mode == 'save':
             df_vote_party.to_csv('vote_party.csv', index=False)
             print('[데이터 저장 완료]')
-        else:
-            print("올바른 모드를 선택해주세요. remote | local | test | save")
 
         return df_vote, df_vote_party
 
-    def update_bills_alternatives(self):
+    def update_bills_alternatives(self, start_ord=None, end_ord=None):
         """대안-법안 관계 데이터를 수집하고 모드에 따라 저장 또는 전송하는 메서드"""
 
         fetch_mode = 'total'
-        if self.params is not None:
-            fetch_mode = self.params.get('fetch_mode', 'total')
 
         if fetch_mode != 'total':
             print("현재는 'total' 모드만 지원합니다.")
@@ -516,8 +498,8 @@ class WorkFlowManager:
         params = {
             'serviceKey': api_key,
             'numOfRows': '100',
-            'start_ord': self.params.get('start_ord', os.getenv('AGE')) if self.params else os.getenv('AGE'),
-            'end_ord': self.params.get('end_ord', os.getenv('AGE')) if self.params else os.getenv('AGE'),
+            'start_ord': start_ord or os.getenv('AGE'),
+            'end_ord': end_ord or os.getenv('AGE'),
             'proposer_kind_cd': 'F02'
         }
 
@@ -569,9 +551,7 @@ class WorkFlowManager:
             print("❌ [ERROR] 대안 데이터가 없습니다.")
             return None
 
-        mode = 'save'
-        if self.params is not None:
-            mode = self.params.get('mode', 'save')
+        mode = self.mode
 
         payload_name = os.getenv('PAYLOAD_alternatives')
         url_post = os.getenv('POST_URL_alternatives')
@@ -590,7 +570,7 @@ class WorkFlowManager:
             sender.send_data(df_alternatives, url_post, payload_name)
         elif mode == 'test':
             print('[테스트 모드 : 데이터 전송 생략]')
-        else:
+        elif mode == 'save':
             df_alternatives.to_csv('bills_alternatives.csv', index=False)
             print('[데이터 저장 완료]')
 
