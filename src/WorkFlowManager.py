@@ -53,7 +53,7 @@ class WorkFlowManager:
             # DB에 연결하여 현재 가장 최신 법안 날짜 가져오기
             try:
                 DBconn = DatabaseManager()
-                latest_propose_dt = DBconn.get_latest_propose_data()
+                latest_propose_dt = DBconn.get_latest_propose_date()
 
                 #DB에서 최신 법안 날짜 가져오는데 실패한 경우
                 if latest_propose_dt is None:
@@ -91,8 +91,9 @@ class WorkFlowManager:
         # 법안 데이터 머지
         df_bills = processor.merge_bills_df(bills_content_data, bills_info_data)
 
-        # 중복 데이터 제거
-        processor.remove_duplicates(df_bills, DatabaseManager())
+        # 중복 데이터 제거 (fetch 모드에서는 수행하지 않음)
+        if mode != 'fetch':
+            processor.remove_duplicates(df_bills, DatabaseManager())
 
         if len(df_bills) == 0:
             print("새로운 데이터가 없습니다. 코드를 종료합니다.")
@@ -122,7 +123,7 @@ class WorkFlowManager:
 
         if mode == 'remote':
             print("[데이터 요약 및 전송 시작]")
-            
+
             # 제목 요약
             summerizer.AI_title_summarize(df_bills)
 
@@ -130,16 +131,37 @@ class WorkFlowManager:
             # TODO: 내용요약 메서드 구조 개선하고 여기서부터 작업 재개할것
             summerizer.AI_content_summarize(df_bills)
 
+            # 데이터 전송
+            sender.send_data(df_bills, url, payload_name)
 
             print("[정당별 법안 발의수 갱신 요청 중...]")
             post_url_party_bill_count = os.environ.get("POST_URL_party_bill_count")
             sender.request_post(post_url_party_bill_count)
             print("[정당별 법안 발의수 갱신 요청 완료]")
-            
+
             print("[의원별 최신 발의날짜 갱신 요청 중...]")
             post_ulr_congressman_propose_date = os.environ.get("POST_URL_congressman_propose_date")
             sender.request_post(post_ulr_congressman_propose_date)
             print("[의원별 최신 발의날짜 갱신 요청 완료]")
+
+        elif mode == 'local':
+            print("[로컬 모드 : AI 요약 생략 및 로컬 DB에 전송]")
+            df_bills['briefSummary'] = ""
+            df_bills['gptSummary'] = ""
+            url = url.replace("https://api.lawdigest.net", "http://localhost:8080")
+            sender.send_data(df_bills, url, payload_name)
+
+        elif mode == 'test':
+            print('[테스트 모드 : 데이터 요약 및 전송 생략]')
+
+        elif mode == 'save':
+            df_bills.to_csv('df_bills.csv', index=False)
+            print('[데이터 저장 완료]')
+
+        elif mode == 'fetch':
+            print('[데이터 수집 모드: 중복 데이터 제거 없이 데이터를 수집합니다.]')
+
+        return df_bills
 
 
 
