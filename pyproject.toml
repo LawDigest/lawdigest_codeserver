@@ -15,7 +15,8 @@ dependencies = [
   "python-dotenv",
   "beautifulsoup4",
   "tqdm",
-  "PyMySQL"
+  "PyMySQL",
+  "langchain"
 ]
 
 [project.optional-dependencies]

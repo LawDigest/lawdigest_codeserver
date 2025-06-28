@@ -1,6 +1,7 @@
 import pandas as pd
 from IPython.display import clear_output
-from openai import OpenAI
+from langchain.chat_models import ChatOpenAI
+from langchain.schema import SystemMessage, HumanMessage
 import os
 from dotenv import load_dotenv
 
@@ -16,20 +17,18 @@ class AISummarizer:
             '정부':  "너는 법률개정안을 이해하기 쉽게 요약해서 알려줘야 해. 반드시 \"대한민국 {proposer}가 발의한 {title}의 내용 및 목적은 다음과 같습니다:\"로 문장을 시작해. 1.핵심 내용: 설명 2.핵심 내용: 설명 3.핵심 내용: 설명 이렇게 쉽게 요약하고, 마지막은 법안의 취지를 설명해. 핵심 내용은 볼드체 처리해."
         }
 
-        # OpenAI Client 로드
-        self.client = OpenAI(
-        api_key=os.environ.get("APIKEY_OPENAI"),  # this is also the default, it can be omitted
-        )
+        # ChatGPT model via Langchain
+        self.api_key = os.environ.get("APIKEY_OPENAI")
 
         # 환경변수 로드
         load_dotenv()
 
     def AI_title_summarize(self, df_bills, model=None):
     
-        client = self.client
-        
         if model is None:
-            model = os.environ.get("TITLE_SUMMARIZATION_MODEL")    
+            model = os.environ.get("TITLE_SUMMARIZATION_MODEL")
+
+        llm = ChatOpenAI(model=model, openai_api_key=self.api_key)
         
         print("\n[AI 제목 요약 진행 중...]")
         
@@ -55,16 +54,11 @@ class AISummarizer:
             print('-'*10)
 
             messages = [
-                {"role": "system",
-                "content": "입력하는 법률개정안 내용의 핵심을 40글자 이내로 짧게 요약한 제목을 한 문장으로 작성할 것. 제목은 반드시 법률개정안 이름으로 끝나야 함.\n\n법률개정안의 내용을 한눈에 알아볼 수 있게 핵심을 요약한 제목을 작성. 반드시 '~하기 위한 ~법안'와 같은 형식으로 작성. 반드시 한 문장으로 작성. 법안의 취지를 중심으로 짧고 간결하게 요약\n"},          
-                {"role": "user", "content": str(content) + str(task)}
+                SystemMessage(content="입력하는 법률개정안 내용의 핵심을 40글자 이내로 짧게 요약한 제목을 한 문장으로 작성할 것. 제목은 반드시 법률개정안 이름으로 끝나야 함.\n\n법률개정안의 내용을 한눈에 알아볼 수 있게 핵심을 요약한 제목을 작성. 반드시 '~하기 위한 ~법안'와 같은 형식으로 작성. 반드시 한 문장으로 작성. 법안의 취지를 중심으로 짧고 간결하게 요약\n"),
+                HumanMessage(content=str(content) + str(task))
             ]
-            
-            response = client.chat.completions.create(
-                model=model,  
-                messages=messages,
-            )
-            chat_response = response.choices[0].message.content
+
+            chat_response = llm.invoke(messages).content
 
             print(f"chatGPT: {chat_response}")
 
@@ -89,10 +83,10 @@ class AISummarizer:
         """
         df_bills를 입력받아 'proposerKind' 컬럼을 기준으로 발의주체별 프롬프트를 자동으로 적용하여 AI 요약을 생성합니다.
         """
-        client = self.client
-
         if model is None:
             model = os.environ.get("CONTENT_SUMMARIZATION_MODEL")
+
+        llm = ChatOpenAI(model=model, openai_api_key=self.api_key)
 
         print("\n[AI 내용 요약 진행 중...]")
 
@@ -131,16 +125,12 @@ class AISummarizer:
             print('-'*10)
             
             messages = [
-                {"role": "system", "content": system_prompt}, 
-                {"role": "user", "content": str(content) + str(task)}
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=str(content) + str(task))
             ]
 
             try:
-                response = client.chat.completions.create(
-                    model=model,
-                    messages=messages,
-                )
-                chat_response = response.choices[0].message.content
+                chat_response = llm.invoke(messages).content
                 print(f"chatGPT: {chat_response}")
                 
                 df_bills.loc[index, 'gptSummary'] = chat_response
