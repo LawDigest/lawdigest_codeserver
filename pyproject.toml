@@ -1,0 +1,30 @@
+[project]
+name = "lawdigest-dataops"
+version = "0.1.0"
+description = "모두의입법 프로젝트를 위한 데이터 수집 및 가공, 적재 파이프라인 코드"
+readme = "README.md"
+authors = [
+  { name = "Minjae Park", email = "parkmj9260@gmail.com" }
+]
+requires-python = ">=3.10"
+dependencies = [
+  "requests",
+  "pandas",
+  "lxml",
+  "openai",
+  "python-dotenv",
+  "beautifulsoup4",
+  "tqdm",
+  "PyMySQL"
+]
+
+[project.optional-dependencies]
+dev = [
+  "jupyter",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

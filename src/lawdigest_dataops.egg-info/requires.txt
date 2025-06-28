@@ -1,0 +1,11 @@
+requests
+pandas
+lxml
+openai
+python-dotenv
+beautifulsoup4
+tqdm
+PyMySQL
+
+[dev]
+jupyter

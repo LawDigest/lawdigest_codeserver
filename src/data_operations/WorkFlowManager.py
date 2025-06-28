@@ -13,7 +13,7 @@ from .APISender import APISender
 from .DatabaseManager import DatabaseManager
 
 class WorkFlowManager:
-    def __init__(self, mode: str = 'remote'):
+    def __init__(self, mode):
         """Workflow manager initialization
 
         Parameters
@@ -128,7 +128,6 @@ class WorkFlowManager:
             summerizer.AI_title_summarize(df_bills)
 
             # 내용 요약
-            # TODO: 내용요약 메서드 구조 개선하고 여기서부터 작업 재개할것
             summerizer.AI_content_summarize(df_bills)
 
             # 데이터 전송

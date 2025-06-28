@@ -1,0 +1,19 @@
+Metadata-Version: 2.4
+Name: lawdigest-dataops
+Version: 0.1.0
+Summary: 모두의입법 프로젝트를 위한 데이터 수집 및 가공, 적재 파이프라인 코드
+Author-email: Minjae Park <parkmj9260@gmail.com>
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: requests
+Requires-Dist: pandas
+Requires-Dist: lxml
+Requires-Dist: openai
+Requires-Dist: python-dotenv
+Requires-Dist: beautifulsoup4
+Requires-Dist: tqdm
+Requires-Dist: PyMySQL
+Provides-Extra: dev
+Requires-Dist: jupyter; extra == "dev"
+
+# lawdigest_codeserver

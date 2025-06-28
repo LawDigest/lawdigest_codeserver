@@ -1,0 +1,17 @@
+README.md
+pyproject.toml
+src/data_operations/AISummarizer.py
+src/data_operations/APISender.py
+src/data_operations/DataFetcher.py
+src/data_operations/DataProcessor.py
+src/data_operations/DatabaseManager.py
+src/data_operations/WorkFlowManager.py
+src/data_operations/__init__.py
+src/data_operations/data_operations_OOP.py
+src/etc/crawling_오늘의국회.py
+src/lawdigest_dataops.egg-info/PKG-INFO
+src/lawdigest_dataops.egg-info/SOURCES.txt
+src/lawdigest_dataops.egg-info/dependency_links.txt
+src/lawdigest_dataops.egg-info/requires.txt
+src/lawdigest_dataops.egg-info/top_level.txt
+tests/test_import_module.py
