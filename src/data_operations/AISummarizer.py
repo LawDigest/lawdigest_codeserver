@@ -10,7 +10,6 @@ class AISummarizer:
     def __init__(self):
         self.input_data = None
         self.output_data = None
-        self.proposer_type_list = ['congressman', 'chairman', 'gov'] # TODO: 자동 발의자 구분 인식 구현 이후 제거
         self.prompt_dict = {
             '의원':  "너는 법률개정안을 이해하기 쉽게 요약해서 알려줘야 해. 반드시 \"{proposer}이 발의한 {title}의 내용 및 목적은 다음과 같습니다:\"로 문장을 시작해. 1.핵심 내용: 설명 2.핵심 내용: 설명 3.핵심 내용: 설명 이렇게 쉽게 요약하고, 마지막은 법안의 취지를 설명해. 핵심 내용은 볼드체 처리해.",
             '위원장': "너는 법률개정안을 이해하기 쉽게 요약해서 알려줘야 해. 반드시 \"{proposer}이 발의한 {title}의 내용 및 목적은 다음과 같습니다:\"로 문장을 시작해. 1.핵심 내용: 설명 2.핵심 내용: 설명 3.핵심 내용: 설명 이렇게 쉽게 요약하고, 마지막은 법안의 취지를 설명해. 핵심 내용은 볼드체 처리해.",
@@ -151,6 +150,3 @@ class AISummarizer:
 
     def AI_model_test(date=None, title_model=None, content_model=None):
         pass
-
-
-# TODO: APISender 구현

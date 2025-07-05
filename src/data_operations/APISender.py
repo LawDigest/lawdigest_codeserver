@@ -70,4 +70,4 @@ class APISender:
             print(f"데이터 전송 중 오류 발생: {e}")
 
 
-# TODO: WorkFlowManager 구현
+

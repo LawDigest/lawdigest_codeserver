@@ -239,10 +239,12 @@ class DataFetcher:
             # 유지할 컬럼 목록
             columns_to_keep = [
                 'proposeDt',  # 발의일자
+                'billId', # 법안 ID
+                'billName', # 법안 이름
                 'billNo',  # 법안번호
                 'summary',  # 주요내용
                 'procStageCd',  # 현재 처리 단계
-                'proposerKind'
+                'proposerKind' # 발의자 종류
             ]
 
             # 지정된 컬럼만 유지하고 나머지 제거
@@ -253,8 +255,6 @@ class DataFetcher:
 
             # 인덱스 재설정
             df_bills_content.reset_index(drop=True, inplace=True)
-
-            
 
             print(f"✅ [INFO] 결측치 처리 완료. {len(df_bills_content)} 개의 법안 유지됨.")
 
@@ -268,6 +268,10 @@ class DataFetcher:
             "summary": "summary",
             "procStageCd": "stage"
         }, inplace=True)
+
+        # TODO: AssemblyNumber, Proposers 컬럼 생성
+        # AssemblyNumber는 데이터 호출에 사용된 환경변수 AGE에서 가져오기
+        # Proposers 값은 billName 컬럼 값에서 정규표현식으로 뒤에 붙은 괄호 분리해 가져와 생성
 
         print("\n📌 발의일자별 수집한 데이터 수:")
         print(df_bills_content['proposeDate'].value_counts()) 

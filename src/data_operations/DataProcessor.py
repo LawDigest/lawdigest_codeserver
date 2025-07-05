@@ -68,7 +68,6 @@ class DataProcessor:
             return pd.DataFrame()
 
         # 위원장안 - 포함된 의원 관계 데이터 수집
-        # TODO: df_alternatives 데이터 필요 - 어떻게 Fetch 해올지 고민
         df_alternatives = self.fetcher.fetch_bills_alternatives(df_bills)
 
         # df_bills_chair의 billName에서 (대안) 제거
@@ -143,9 +142,3 @@ class DataProcessor:
         print(df_bills_dup_removed['proposeDate'].value_counts())
 
         return df_bills_dup_removed
-    
-    # TODO: 컬럼 필터링 수행하는 함수 DataProcessor에 구현
-    def columns_selection(self):
-        pass
-
-# TODO: AISummarizer 구현
