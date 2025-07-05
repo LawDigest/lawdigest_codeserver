@@ -376,91 +376,38 @@ class DataFetcher:
         - df_lawmakers: pandas.DataFrame, 수집된 국회의원 데이터
         """
         api_key = os.environ.get("APIKEY_lawmakers")
-        url = 'https://open.assembly.go.kr/portal/openapi/nwvrqwxyaytdsfvhu' # 열린국회정보 '국회의원 인적사항' API
-        p_size = 100
-        max_retry = 10
+        url = 'https://open.assembly.go.kr/portal/openapi/nwvrqwxyaytdsfvhu'  # 열린국회정보 '국회의원 인적사항' API
+        mapper = self.mapper_open_xml
 
-        all_data = []
-        pageNo = 1
-        processing_count = 0
-        retries_left = max_retry
+        params = {
+            'KEY': api_key,
+            'Type': 'xml',
+            mapper['page_param']: 1,
+            mapper['size_param']: 100,
+        }
 
+        print("\n📌 [국회의원 데이터 수집 시작]")
         start_time = time.time()
 
-        while True:
-            params = {
-                'KEY': api_key,
-                'Type': 'xml',
-                'pIndex': pageNo,
-                'pSize': p_size,
-            }
-            
-            print(f"Requesting page {pageNo}...")
-            
-            # API 요청
-            response = requests.get(url, params=params)
-            
-            # 응답 데이터 확인
-            if response.status_code == 200:
-                try:
-                    root = ElementTree.fromstring(response.content)
-                    head = root.find('head')
-                    if head is None:
-                        print(f"Error: 'head' element not found in response (Page {pageNo})")
-                        break
-                    
-                    total_count_elem = head.find('list_total_count')
-                    if total_count_elem is None:
-                        print(f"Error: 'list_total_count' element not found in 'head' (Page {pageNo})")
-                        break
-                    
-                    total_count = int(total_count_elem.text)
-                    
-                    rows = root.findall('row')
-                    if not rows:
-                        print("No more data available.")
-                        break
-                    
-                    data = []
-                    for row_elem in rows:
-                        row = {child.tag: child.text for child in row_elem}
-                        data.append(row)
-                    
-                    all_data.extend(data)
-                    # print(f"Page {pageNo} processed. {len(data)} items added. Total: {len(all_data)}")
-                    processing_count += 1
-                    
-                    if pageNo * p_size >= total_count:
-                        # print("All pages processed.")
-                        break
-                    
-                except Exception as e:
-                    print(f"Error: {e}")
-                    retries_left -= 1
-            else:
-                print(f"Error Code: {response.status_code} (Page {pageNo})")
-                retries_left -= 1
-            
-            if retries_left <= 0:
-                print("Maximum retry reached. Exiting...")
-                break
-            
-            if processing_count >= 10:
-                clear_output()
-                processing_count = 0
-
-            pageNo += 1
-
-        # 데이터프레임 생성
-        df_lawmakers = pd.DataFrame(all_data)
+        df_lawmakers = self.fetch_data_generic(
+            url=url,
+            params=params,
+            mapper=mapper,
+            format='xml',
+            all_pages=True,
+        )
 
         end_time = time.time()
         total_time = end_time - start_time
-        print(f"[모든 파일 다운로드 완료! 전체 소요 시간: {total_time:.2f}초]")
-        print(f"[{len(df_lawmakers)} 개의 의원 데이터 수집됨]")
+        print(f"✅ [INFO] 다운로드 완료! 총 소요 시간: {total_time:.2f}초")
+
+        if df_lawmakers.empty:
+            print("❌ [ERROR] 수집한 데이터가 없습니다.")
+            return None
+
+        print(f"✅ [INFO] 총 {len(df_lawmakers)} 개의 의원 데이터 수집됨")
 
         self.content = df_lawmakers
-
         return df_lawmakers
 
 
