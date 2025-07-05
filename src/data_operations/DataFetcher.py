@@ -10,20 +10,55 @@ from bs4 import BeautifulSoup
 import re
 from tqdm import tqdm
 
+import json
+
 class DataFetcher:
     def __init__(self, params, subject=None, url=None, filter_data=True):
 
-        self.params = params # 요청변수
-        self.url = url # 모드(처리방식)
+        self.params = params  # 요청변수
+        self.url = url  # 모드(처리방식)
         self.filter_data = filter_data
-        self.content = None # 수집된 데이터
+        self.content = None  # 수집된 데이터
         self.df_bills = None
         self.df_lawmakers = None
         self.df_vote = None
         self.subject = subject
 
+        # 열린국회정보(json) 매퍼
+        self.mapper_open_json = {
+            "page_param": "pIndex",
+            "size_param": "pSize",
+            "data_path": ["ALLBILL", 1, "row"],
+            "total_count_path": ["ALLBILL", 0, "head", 0, "list_total_count"],
+            "result_code_path": ["ALLBILL", 0, "head", 1, "RESULT", "CODE"],
+            "result_msg_path": ["ALLBILL", 0, "head", 1, "RESULT", "MESSAGE"],
+            "success_code": "INFO-000",
+        }
+
+        # 열린국회정보(xml) 매퍼
+        self.mapper_open_xml = {
+            "page_param": "pIndex",
+            "size_param": "pSize",
+            "data_path": ".//row",
+            "total_count_path": ".//list_total_count",
+            "result_code_path": ".//RESULT/CODE",
+            "result_msg_path": ".//RESULT/MESSAGE",
+            "success_code": "INFO-000",
+        }
+
+        # 공공데이터포털(xml) 매퍼
+        self.mapper_datagokr_xml = {
+            "page_param": "pageNo",
+            "size_param": "numOfRows",
+            "data_path": ".//item",
+            "total_count_path": ".//totalCount",
+            "result_code_path": ".//resultCode",
+            "result_msg_path": ".//resultMsg",
+            "success_code": "00",
+        }
+
         load_dotenv()
-        
+
         self.content = self.fetch_data(self.subject)
 
     def fetch_data(self, subject):
@@ -52,90 +87,152 @@ class DataFetcher:
             case _:
                 print(f"❌ [ERROR] '{subject}' is not a valid subject.")
                 return None
+
+    # ------------------------------------------------------------------
+    # Generic API helpers originally from etc/fetch_data_generic.py
+    # ------------------------------------------------------------------
+
+    def _get_nested_value(self, data, path):
+        current_level = data
+        for key in path:
+            if isinstance(current_level, dict):
+                current_level = current_level.get(key)
+            elif isinstance(current_level, list) and isinstance(key, int):
+                try:
+                    current_level = current_level[key]
+                except IndexError:
+                    return None
+            else:
+                return None
+            if current_level is None:
+                return None
+        return current_level
+
+    def _parse_response(self, response_content, format, mapper):
+        data, total_count, result_code, result_msg = [], 0, None, "No message"
+        try:
+            if format == 'xml':
+                root = ElementTree.fromstring(response_content)
+                data = [{child.tag: child.text for child in item} for item in root.findall(mapper['data_path'])]
+                total_count = int(root.find(mapper['total_count_path']).text)
+                result_code = root.find(mapper['result_code_path']).text
+                result_msg = root.find(mapper['result_msg_path']).text
+            elif format == 'json':
+                response_json = json.loads(response_content)
+                data = self._get_nested_value(response_json, mapper['data_path']) or []
+                total_count = int(self._get_nested_value(response_json, mapper['total_count_path']))
+                result_code = self._get_nested_value(response_json, mapper['result_code_path'])
+                result_msg = self._get_nested_value(response_json, mapper['result_msg_path'])
+
+            if result_code != mapper['success_code']:
+                tqdm.write(f"   [API 응답 실패] 코드: {result_code}, 메시지: {result_msg}")
+                return [], 0
+            return data, total_count
+        except Exception as e:
+            tqdm.write(f"   ❌ 응답 파싱 중 오류 발생: {e}")
+            return [], 0
+
+    def fetch_data_generic(self, url, params, mapper, format='json', all_pages=True, verbose=False, max_retry=3):
+        page_param = mapper.get('page_param')
+        if all_pages and not page_param:
+            raise ValueError("'all_pages=True'일 경우, 매퍼에 'page_param'이 정의되어야 합니다.")
+
+        all_data = []
+        current_params = params.copy()
+
+        print("➡️  첫 페이지 요청하여 전체 데이터 개수 확인 중...")
+        try:
+            response = requests.get(url, params=current_params)
+            response.raise_for_status()
+            if verbose:
+                print(response.content.decode('utf-8'))
+
+            initial_data, total_count = self._parse_response(response.content, format, mapper)
+
+            if total_count == 0 and not initial_data:
+                print("⚠️  수집할 데이터가 없거나 API 응답에 문제가 있습니다.")
+                return pd.DataFrame()
+
+            all_data.extend(initial_data)
+
+        except Exception as e:
+            print(f"❌ 첫 페이지 요청 오류: {e}")
+            return pd.DataFrame()
+
+        if not all_pages:
+            df = pd.DataFrame(all_data)
+            print(f"\n🎉 다운로드 완료! 총 {len(df)}개의 데이터를 수집했습니다. 📊")
+            return df
+
+        with tqdm(total=total_count, initial=len(all_data), desc="📥 데이터 수집 중", unit="개") as pbar:
+            retries_left = max_retry
+
+            while len(all_data) < total_count:
+                current_params[page_param] += 1
+
+                try:
+                    response = requests.get(url, params=current_params)
+                    response.raise_for_status()
+                    data, _ = self._parse_response(response.content, format, mapper)
+
+                    if not data:
+                        pbar.set_description("⚠️ API 응답에 더 이상 데이터가 없습니다")
+                        break
+
+                    all_data.extend(data)
+                    pbar.update(len(data))
+                    retries_left = max_retry
+
+                except Exception as e:
+                    pbar.write(f"❌ 오류 발생 (페이지 {current_params[page_param]}): {e}")
+                    retries_left -= 1
+                    if retries_left <= 0:
+                        pbar.write("\n🚨 최대 재시도 횟수를 초과했습니다.")
+                        break
+
+        df = pd.DataFrame(all_data)
+        print(f"\n🎉 다운로드 완료! 총 {len(df)}개의 데이터를 수집했습니다. 📊")
+        return df
         
     def fetch_bills_content(self):
-        """
-        법안 주요 내용 데이터를 API에서 수집하는 함수.
-        """
+        """법안 주요 내용 데이터를 API에서 수집하는 함수."""
 
-        # 기본 날짜 설정
-        start_date = self.params.get("start_date", (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d'))
+        start_date = self.params.get(
+            "start_date",
+            (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d'),
+        )
         end_date = self.params.get("end_date", datetime.now().strftime('%Y-%m-%d'))
 
-        # 환경 변수로부터 API 키 및 국회 회기 정보 로드
         api_key = os.environ.get("APIKEY_billsContent")
         url = 'http://apis.data.go.kr/9710000/BillInfoService2/getBillInfoList'
+        mapper = self.mapper_datagokr_xml
+
         params = {
             'serviceKey': api_key,
-            'numOfRows': '100',
+            mapper['page_param']: 1,
+            mapper['size_param']: 100,
             'start_ord': self.params.get("start_ord", os.environ.get("AGE")),
             'end_ord': self.params.get("end_ord", os.environ.get("AGE")),
             'start_propose_date': start_date,
-            'end_propose_date': end_date
+            'end_propose_date': end_date,
         }
 
-        # 수집하는 날짜 범위 출력
         print(f"📌 [{start_date} ~ {end_date}] 의안 주요 내용 데이터 수집 시작...")
 
-        # 데이터 수집 시작
-        all_data = []
-        page_no = 1
-        processing_count = 0
-        max_retry = 3
-        start_time = time.time()
+        df_bills_content = self.fetch_data_generic(
+            url=url,
+            params=params,
+            mapper=mapper,
+            format='xml',
+            all_pages=True,
+        )
 
-        while True:
-            params.update({'pageNo': str(page_no)})
-            response = requests.get(url, params=params)
+        if df_bills_content.empty:
+            raise AssertionError(
+                "❌ [ERROR] 수집된 데이터가 없습니다. API 응답을 확인하세요."
+            )
 
-            if response.status_code == 200:
-                try:
-                    root = ElementTree.fromstring(response.content)
-                    items = root.find('body').find('items')
-                    # XML 파싱
-
-                    result_code = root.find('header/resultCode').text
-                    result_msg = root.find('header/resultMsg').text
-
-
-                    if not items:
-                        print(f"✅ [INFO] 모든 페이지 데이터 수집 완료. 총 {len(all_data)} 개의 항목 수집됨.")
-                        break
-
-                    data = [{child.tag: child.text for child in item} for item in items]
-                    all_data.extend(data)
-
-                    processing_count += 1
-                except ElementTree.ParseError:
-                    print(f"❌ [ERROR] XML Parsing Error (Page {page_no}): {response.text}")
-                    max_retry -= 1
-                except Exception as e:
-                    print(f"❌ [ERROR] Unexpected Error (Page {page_no}): {e}")
-                    max_retry -= 1
-            else:
-                print(f"❌ [ERROR] HTTP Request Failed (Status Code: {response.status_code})")
-                max_retry -= 1
-
-            if max_retry <= 0:
-                print("❌ [ERROR] Maximum retry limit reached. Exiting...")
-                break
-
-            page_no += 1
-
-        # 결과 출력
-        print(f"📌 [INFO] API 응답 코드: {result_code}, 메시지: {result_msg}")
-
-        # 데이터프레임 생성
-        df_bills_content = pd.DataFrame(all_data)
-
-        end_time = time.time()
-        total_time = end_time - start_time
-        print(f"✅ [INFO] 모든 파일 다운로드 완료! 전체 소요 시간: {total_time:.2f}초")
         print(f"✅ [INFO] 총 {len(df_bills_content)} 개의 법안 수집됨.")
-
-
-        # 수집한 데이터가 없으면 AssertionError 발생
-        assert len(df_bills_content) > 0, "❌ [ERROR] 수집된 데이터가 없습니다. API 응답을 확인하세요."
 
         if self.filter_data:
             print("✅ [INFO] 데이터 컬럼 필터링을 수행합니다.")
@@ -181,111 +278,90 @@ class DataFetcher:
         return df_bills_content
 
     def fetch_bills_info(self):
-            """
-            법안 기본 정보를 API에서 가져오는 함수.
-            """
+        """법안 기본 정보를 API에서 가져오는 함수."""
 
-            # bill_id가 있는 법안 내용 데이터 수집
-            if self.df_bills is None:
-                print("✅ [INFO] 법안정보 수집 대상 bill_no 수집을 위해 법안 내용 API로부터 정보를 수집합니다.")
-                df_bills = self.fetch_bills_content()
-            else:
-                df_bills = self.df_bills
+        # bill_id가 있는 법안 내용 데이터 수집
+        if self.df_bills is None:
+            print("✅ [INFO] 법안정보 수집 대상 bill_no 수집을 위해 법안 내용 API로부터 정보를 수집합니다.")
+            df_bills = self.fetch_bills_content()
+        else:
+            df_bills = self.df_bills
 
-            # 데이터프레임이 없으면 예외 처리
-            if df_bills is None or df_bills.empty:
-                print("❌ [ERROR] `df_bills` 데이터가 없습니다. 올바른 값을 전달하세요.")
-                return None
+        if df_bills is None or df_bills.empty:
+            print("❌ [ERROR] `df_bills` 데이터가 없습니다. 올바른 값을 전달하세요.")
+            return None
 
-            # API 정보 설정
-            api_key = os.environ.get("APIKEY_billsInfo")
-            url = self.url or "https://open.assembly.go.kr/portal/openapi/ALLBILL"
-            all_data = []
+        api_key = os.environ.get("APIKEY_billsInfo")
+        url = self.url or "https://open.assembly.go.kr/portal/openapi/ALLBILL"
 
-            print(f"\n📌 [법안 정보 데이터 수집 중...]")
-            start_time = time.time()
+        # 출처에 따른 매퍼 설정
+        if "open.assembly.go.kr" in url:
+            mapper = self.mapper_open_json
+            format = "json"
+        else:
+            mapper = self.mapper_datagokr_xml
+            format = "xml"
 
-            # `df_bills`에서 법안 번호(`billNumber`) 가져오기
-            for row in tqdm(df_bills.itertuples(), total=len(df_bills)):
-                params = {
-                    "Key": api_key,
-                    "Type": "json",
-                    "pSize": 5,
-                    "pIndex": 1,
-                    "BILL_NO": row.billNumber  # 법안 번호
-                }
+        all_data = []
+        print(f"\n📌 [법안 정보 데이터 수집 중...]")
+        start_time = time.time()
 
-                try:
-                    response = requests.get(url, params=params, timeout=10)
-                    response.raise_for_status()
+        for row in tqdm(df_bills.itertuples(), total=len(df_bills)):
+            params = {
+                "Key": api_key,
+                mapper.get("page_param", "pIndex"): 1,
+                mapper.get("size_param", "pSize"): 5,
+                "Type": format,
+                "BILL_NO": row.billNumber,
+            }
 
-                    # JSON 데이터 파싱
-                    response_data = response.json()
-                    items = response_data.get("ALLBILL", [])
+            df_tmp = self.fetch_data_generic(
+                url=url,
+                params=params,
+                mapper=mapper,
+                format=format,
+                all_pages=True,
+            )
 
-                    if len(items) > 1:
-                        data = items[1].get('row', [])
-                        if data:
-                            all_data.extend(data)
-                        else:
-                            continue
-                    else:
-                        continue
+            if not df_tmp.empty:
+                all_data.extend(df_tmp.to_dict("records"))
 
-                except requests.exceptions.RequestException as e:
-                    print(f"❌ [ERROR] 요청 오류: {e}")
-                    continue  # 오류 발생 시 다음 항목으로 이동
-                except requests.exceptions.JSONDecodeError:
-                    print(f"❌ [ERROR] JSON 파싱 오류: {response.text}")
-                    continue
-                except Exception as e:
-                    print(f"❌ [ERROR] 예상치 못한 오류: {e}")
-                    continue
+        df_bills_info = pd.DataFrame(all_data)
 
-            # DataFrame 생성
-            df_bills_info = pd.DataFrame(all_data)
+        end_time = time.time()
+        total_time = end_time - start_time
+        print(f"✅ [INFO] 다운로드 완료! 총 소요 시간: {total_time:.2f}초")
 
-            end_time = time.time()
-            total_time = end_time - start_time
-            print(f"✅ [INFO] 다운로드 완료! 총 소요 시간: {total_time:.2f}초")
+        if df_bills_info.empty:
+            print("❌ [ERROR] 수집한 데이터가 없습니다.")
+            return None
 
-            # 데이터가 없으면 종료
-            if df_bills_info.empty:
-                print("❌ [ERROR] 수집한 데이터가 없습니다.")
-                return None
+        print(f"✅ [INFO] 총 {len(df_bills_info)}개의 법안 정보 데이터가 수집되었습니다.")
 
-            print(f"✅ [INFO] 총 {len(df_bills_info)}개의 법안 정보 데이터가 수집되었습니다.")
+        if self.filter_data:
+            print("✅ [INFO] 데이터 컬럼 필터링을 수행합니다.")
+            columns_to_keep = ['ERACO', 'BILL_ID', 'BILL_NO', 'BILL_NM', 'PPSR_NM', 'JRCMIT_NM']
+            df_bills_info = df_bills_info[columns_to_keep]
 
-            if self.filter_data:
-                print("✅ [INFO] 데이터 컬럼 필터링을 수행합니다.")
-                # 컬럼 필터링
-                columns_to_keep = ['ERACO', 'BILL_ID', 'BILL_NO', 'BILL_NM', 'PPSR_NM', 'JRCMIT_NM']
-                df_bills_info = df_bills_info[columns_to_keep]
+            column_mapping = {
+                'ERACO': 'assemblyNumber',
+                'BILL_ID': 'billId',
+                'BILL_NO': 'billNumber',
+                'BILL_NM': 'billName',
+                'PPSR_NM': 'proposers',
+                'JRCMIT_NM': 'committee'
+            }
+            df_bills_info.rename(columns=column_mapping, inplace=True)
 
-                # 컬럼명 변경
-                column_mapping = {
-                    'ERACO': 'assemblyNumber',
-                    'BILL_ID': 'billId',
-                    'BILL_NO': 'billNumber',
-                    'BILL_NM': 'billName',
-                    'PPSR_NM': 'proposers',
-                    'JRCMIT_NM': 'committee'
-                }
-                df_bills_info.rename(columns=column_mapping, inplace=True)
+            def extract_names(proposer_str):
+                return re.findall(r'[가-힣]+(?=의원)', proposer_str) if isinstance(proposer_str, str) else []
 
-                # 정규 표현식을 사용하여 이름을 추출하는 함수 정의
-                def extract_names(proposer_str):
-                    return re.findall(r'[가-힣]+(?=의원)', proposer_str) if isinstance(proposer_str, str) else []
+            df_bills_info['rstProposerNameList'] = df_bills_info['proposers'].apply(extract_names)
+            df_bills_info['assemblyNumber'] = df_bills_info['assemblyNumber'].str.replace(r'\D', '', regex=True)
+            print("✅ [INFO] 컬럼 필터링 및 컬럼명 변경 완료.")
 
-                df_bills_info['rstProposerNameList'] = df_bills_info['proposers'].apply(extract_names)
-
-                df_bills_info['assemblyNumber'] = df_bills_info['assemblyNumber'].str.replace(r'\D', '', regex=True)
-
-                print("✅ [INFO] 컬럼 필터링 및 컬럼명 변경 완료.")
-
-            self.content = df_bills_info
-
-            return df_bills_info
+        self.content = df_bills_info
+        return df_bills_info
 
     def fetch_lawmakers_data(self):
         """
