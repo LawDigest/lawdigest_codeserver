@@ -2,10 +2,10 @@ import requests
 import pandas as pd
 from xml.etree import ElementTree
 import json
-import os # os 모듈 추가
-from tqdm import tqdm # tqdm 라이브러리 import
+import os
+from tqdm import tqdm
 
-# --- 범용 함수 (수정 없음) ---
+# --- 범용 함수 (이전과 동일, 수정 없음) ---
 def _get_nested_value(data, path):
     current_level = data
     for key in path:
@@ -33,14 +33,14 @@ def _parse_response(response_content, format, mapper):
             result_code = _get_nested_value(response_json, mapper['result_code_path'])
             result_msg = _get_nested_value(response_json, mapper['result_msg_path'])
         
-        # tqdm 사용 시 print는 tqdm.write로 감싸주는 것이 좋지만, 간단한 정보 표시는 그대로 둬도 무방합니다.
-        # print(f"   [API 응답] 코드: {result_code}, 메시지: {result_msg}")
-        if result_code != mapper['success_code']: return [], 0
+        if result_code != mapper['success_code']:
+            # tqdm 진행률 바와 충돌하지 않게 오류 메시지를 출력합니다.
+            tqdm.write(f"   [API 응답 실패] 코드: {result_code}, 메시지: {result_msg}")
+            return [], 0
         return data, total_count
     except Exception as e:
-        print(f"   ❌ 응답 파싱 중 오류 발생: {e}")
+        tqdm.write(f"   ❌ 응답 파싱 중 오류 발생: {e}")
         return [], 0
-
 
 def fetch_data_generic(url, params, mapper, format='json', all_pages=True, verbose=False, max_retry=3):
     page_param = mapper.get('page_param')
@@ -69,7 +69,6 @@ def fetch_data_generic(url, params, mapper, format='json', all_pages=True, verbo
         print(f"❌ 첫 페이지 요청 오류: {e}")
         return pd.DataFrame()
 
-    # all_pages=False이면 여기서 수집한 첫 페이지만 반환하고 종료
     if not all_pages:
         df = pd.DataFrame(all_data)
         print(f"\n🎉 다운로드 완료! 총 {len(df)}개의 데이터를 수집했습니다. 📊")
@@ -85,8 +84,6 @@ def fetch_data_generic(url, params, mapper, format='json', all_pages=True, verbo
             try:
                 response = requests.get(url, params=current_params)
                 response.raise_for_status()
-                
-                # 두 번째 페이지부터는 total_count 값이 필요 없으므로 _로 받습니다.
                 data, _ = _parse_response(response.content, format, mapper)
                 
                 if not data:
@@ -94,11 +91,10 @@ def fetch_data_generic(url, params, mapper, format='json', all_pages=True, verbo
                     break
                 
                 all_data.extend(data)
-                pbar.update(len(data)) # 새로 가져온 데이터 개수만큼 진행률 바를 업데이트
+                pbar.update(len(data))
                 retries_left = max_retry
 
             except Exception as e:
-                # tqdm 진행률 바와 충돌하지 않게 오류 메시지를 출력합니다.
                 pbar.write(f"❌ 오류 발생 (페이지 {current_params[page_param]}): {e}")
                 retries_left -= 1
                 if retries_left <= 0:
@@ -111,8 +107,51 @@ def fetch_data_generic(url, params, mapper, format='json', all_pages=True, verbo
 
 # --- 여기가 실제 사용법입니다 ---
 if __name__ == '__main__':
-    # 1. API에 맞는 '작업 설명서(mapper)' 만들기
-    bills_xml_mapper = {
+    # =================================================================
+    # 예시 1: 열린국회정보 API (신규 작성)
+    # =================================================================
+    print("--- 열린국회정보 API 수집 테스트 ---")
+    
+    # 1. '열린국회정보' API를 위한 mapper 작성
+    openassembly_xml_mapper = {
+        "page_param": "pIndex",
+        "size_param": "pSize",
+        "data_path": ".//row",                  # 데이터 항목 경로
+        "total_count_path": ".//list_total_count", # 전체 개수 경로
+        "result_code_path": ".//RESULT/CODE",      # 결과 코드 경로
+        "result_msg_path": ".//RESULT/MESSAGE",     # 결과 메시지 경로
+        "success_code": "INFO-000"              # 성공 코드
+    }
+
+    # 2. API URL 및 파라미터 준비
+    openassembly_api_url = 'https://open.assembly.go.kr/portal/openapi/VCONFBILLLIST' #open.assembly.go.kr로 시작하는 url은 열린국회정보 api
+    openassembly_api_params = {
+        "KEY": "YOUR_ASSEMBLY_API_KEY", # 실제 발급받은 키로 교체 필요
+        "Type": "xml",
+        "pIndex": 1,
+        "pSize": 100, # 한 번에 가져올 데이터 개수를 늘리면 속도가 빨라집니다.
+    }
+
+    # 3. 함수 호출!
+    # 아래 주석을 해제하고 유효한 KEY를 입력하면 실제 동작을 테스트할 수 있습니다.
+    # df_assembly = fetch_data_generic(
+    #     url=openassembly_api_url,
+    #     params=openassembly_api_params,
+    #     mapper=openassembly_xml_mapper,
+    #     format='xml'
+    # )
+    
+    # if not df_assembly.empty:
+    #     print(df_assembly.head())
+
+    print("\n" + "="*50 + "\n")
+
+    # =================================================================
+    # 예시 2: 공공데이터포털 API (기존)
+    # =================================================================
+    print("--- 공공데이터포털 의안정보 API 수집 테스트 ---")
+    
+    datagokr_xml_mapper = {
         "page_param": "pageNo",
         "size_param": "numOfRows",
         "data_path": ".//item",
@@ -122,27 +161,21 @@ if __name__ == '__main__':
         "success_code": "00"
     }
 
-    # 2. 함수 호출에 필요한 정보 준비
-    bills_api_url = 'http://apis.data.go.kr/9710000/BillInfoService2/getBillInfoList'
-    bills_api_params = {
-        "serviceKey": os.environ.get("APIKEY_billsContent"),
+    datagokr_api_url = 'http://apis.data.go.kr/9710000/BillInfoService2/getBillInfoList' #apis.data.go.kr로 시작하는 url은 공공데이터포털 api
+    datagokr_api_params = {
+        "serviceKey": "YOUR_PUBLIC_DATA_API_KEY", # 실제 발급받은 키로 교체 필요
         "pageNo": 1,
-        "numOfRows": 100, # 한 번에 가져올 데이터 개수를 늘리면 속도가 빨라집니다.
-        'start_ord': os.environ.get("AGE"),
-        'end_ord': os.environ.get("AGE"),
-        'start_propose_date': '2025-06-01',
-        'end_propose_date': '2025-07-05'
+        "numOfRows": 100,
     }
 
-    print("--- 공공데이터포털 의안정보 API 수집 테스트 ---")
-    # 3. 함수 호출!
-    df_result = fetch_data_generic(
-        url=bills_api_url,
-        params=bills_api_params,
-        mapper=bills_xml_mapper,
-        verbose=False,
-        format='xml'
-    )
+    # 아래 주석을 해제하고 유효한 serviceKey를 입력하면 실제 동작을 테스트할 수 있습니다.
+    # df_bills = fetch_data_generic(
+    #     url=datagokr_api_url,
+    #     params=datagokr_api_params,
+    #     mapper=datagokr_xml_mapper,
+    #     format='xml'
+    # )
     
-    if not df_result.empty:
-        print(df_result.head())
+    # if not df_bills.empty:
+    #     print(df_bills.head())
+    pass
