@@ -86,6 +86,8 @@ class WorkFlowManager:
         bills_info_data = fetcher.fetch_data('bill_info')
 
         # 2. 데이터 처리
+        
+        # 데이터 처리 객체 선언
         processor = DataProcessor(fetcher)
 
         # 법안 데이터 머지

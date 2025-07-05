@@ -1,5 +1,3 @@
-
-
 import requests
 import pandas as pd
 from xml.etree import ElementTree
@@ -14,10 +12,8 @@ from tqdm import tqdm
 
 class DataFetcher:
     def __init__(self, params, subject=None, url=None, filter_data=True):
-        if params == None:
-            self.params = {}
-        else:
-            self.params = params # 요청변수
+
+        self.params = params # 요청변수
         self.url = url # 모드(처리방식)
         self.filter_data = filter_data
         self.content = None # 수집된 데이터
@@ -31,6 +27,7 @@ class DataFetcher:
         self.content = self.fetch_data(self.subject)
 
     def fetch_data(self, subject):
+        
         match subject:
             case "bill_info":
                 return self.fetch_bills_info()
@@ -299,7 +296,7 @@ class DataFetcher:
         - df_lawmakers: pandas.DataFrame, 수집된 국회의원 데이터
         """
         api_key = os.environ.get("APIKEY_lawmakers")
-        url = 'https://open.assembly.go.kr/portal/openapi/nwvrqwxyaytdsfvhu'
+        url = 'https://open.assembly.go.kr/portal/openapi/nwvrqwxyaytdsfvhu' # 열린국회정보 '국회의원 인적사항' API
         p_size = 100
         max_retry = 10
 
