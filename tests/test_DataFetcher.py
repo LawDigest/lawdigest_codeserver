@@ -14,7 +14,7 @@ def params():
         "end_ord": "22"
     }
 
-def test_fetch_bills_content_real_api(params):
+def test_fetch_bills_content(params):
     """✅ 실제 API 호출 테스트: 의안 주요내용 수집"""
     print("\n🔍 테스트 시작: 의안 주요내용 API 호출")
 
