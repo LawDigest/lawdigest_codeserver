@@ -96,7 +96,7 @@ class WorkFlowManager:
 
         # 중복 데이터 제거 (fetch 모드에서는 수행하지 않음)
         if mode != 'fetch':
-            processor.remove_duplicates(df_bills, DatabaseManager())
+            df_bills = processor.remove_duplicates(df_bills, DatabaseManager())
 
         if len(df_bills) == 0:
             print("새로운 데이터가 없습니다. 코드를 종료합니다.")

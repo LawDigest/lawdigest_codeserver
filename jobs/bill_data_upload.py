@@ -2,7 +2,7 @@ import data_operations as dataops
 import datetime
 import time
 import traceback
-from notifier import Notifier # Notifier 클래스를 import 합니다.
+from data_operations import Notifier # Notifier 클래스를 import 합니다.
 
 # 1. Notifier 인스턴스 생성
 notifier = Notifier()
