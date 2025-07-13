@@ -11,6 +11,7 @@ from .DataProcessor import DataProcessor
 from .AISummarizer import AISummarizer
 from .APISender import APISender
 from .DatabaseManager import DatabaseManager
+from .Notifier import Notifier
 
 class WorkFlowManager:
     def __init__(self, mode):
@@ -148,6 +149,15 @@ class WorkFlowManager:
             post_ulr_congressman_propose_date = os.environ.get("POST_URL_congressman_propose_date")
             sender.request_post(post_ulr_congressman_propose_date)
             print("[의원별 최신 발의날짜 갱신 요청 완료]")
+
+                # Notifier 인스턴스 생성
+            notifier = Notifier()
+
+            print("\n--- 'bills' 주제 테스트 ---")
+            notifier.notify(
+                subject="bills", 
+                data=df_bills, 
+            )
 
         elif mode == 'local':
             print("[로컬 모드 : AI 요약 생략 및 로컬 DB에 전송]")
