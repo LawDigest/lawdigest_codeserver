@@ -64,10 +64,10 @@ class DataFetcher:
     def fetch_data(self, subject):
         
         match subject:
-            case "bill_info":
-                return self.fetch_bills_info()
-            case "bill_content":
-                return self.fetch_bills_content()
+            # case "bill_info":
+            #     return self.fetch_bills_info()
+            case "bills":
+                return self.fetch_bills_data()
             case "bill_coactors":
                 return self.fetch_bills_coactors()
             case "lawmakers":
@@ -194,7 +194,7 @@ class DataFetcher:
         print(f"\n🎉 다운로드 완료! 총 {len(df)}개의 데이터를 수집했습니다. 📊")
         return df
         
-    def fetch_bills_content(self):
+    def fetch_bills_data(self):
         """법안 주요 내용 데이터를 API에서 수집하는 함수."""
 
         start_date = self.params.get(
@@ -219,7 +219,7 @@ class DataFetcher:
 
         print(f"📌 [{start_date} ~ {end_date}] 의안 주요 내용 데이터 수집 시작...")
 
-        df_bills_content = self.fetch_data_generic(
+        df_bills = self.fetch_data_generic(
             url=url,
             params=params,
             mapper=mapper,
@@ -227,12 +227,12 @@ class DataFetcher:
             all_pages=True,
         )
 
-        if df_bills_content.empty:
+        if df_bills.empty:
             raise AssertionError(
                 "❌ [ERROR] 수집된 데이터가 없습니다. API 응답을 확인하세요."
             )
 
-        print(f"✅ [INFO] 총 {len(df_bills_content)} 개의 법안 수집됨.")
+        print(f"✅ [INFO] 총 {len(df_bills)} 개의 법안 수집됨.")
 
         if self.filter_data:
             print("✅ [INFO] 데이터 컬럼 필터링을 수행합니다.")
@@ -248,124 +248,124 @@ class DataFetcher:
             ]
 
             # 지정된 컬럼만 유지하고 나머지 제거
-            df_bills_content = df_bills_content[columns_to_keep]
+            df_bills = df_bills[columns_to_keep]
 
             # 'summary' 컬럼에 결측치가 있는 행 제거
-            df_bills_content = df_bills_content.dropna(subset=['summary'])
+            df_bills = df_bills.dropna(subset=['summary'])
 
             # 인덱스 재설정
-            df_bills_content.reset_index(drop=True, inplace=True)
+            df_bills.reset_index(drop=True, inplace=True)
 
-            print(f"✅ [INFO] 결측치 처리 완료. {len(df_bills_content)} 개의 법안 유지됨.")
+            print(f"✅ [INFO] 결측치 처리 완료. {len(df_bills)} 개의 법안 유지됨.")
 
         else:
             print("✅ [INFO] 데이터 컬럼 필터링을 수행하지 않습니다.")
 
         # 컬럼 이름 변경
-        df_bills_content.rename(columns={
+        df_bills.rename(columns={
             "proposeDt": "proposeDate",
             "billNo": "billNumber",
             "summary": "summary",
             "procStageCd": "stage"
         }, inplace=True)
 
-        # TODO: AssemblyNumber, Proposers 컬럼 생성
         # AssemblyNumber는 데이터 호출에 사용된 환경변수 AGE에서 가져오기
-        # Proposers 값은 billName 컬럼 값에서 정규표현식으로 뒤에 붙은 괄호 분리해 가져와 생성
+        df_bills['assemblyNumber'] = os.environ.get("AGE") 
+
 
         print("\n📌 발의일자별 수집한 데이터 수:")
-        print(df_bills_content['proposeDate'].value_counts()) 
+        print(df_bills['proposeDate'].value_counts()) 
 
-        self.content = df_bills_content
-        self.df_bills = df_bills_content
+        self.content = df_bills
+        self.df_bills = df_bills
 
-        return df_bills_content
+        return df_bills
 
-    def fetch_bills_info(self):
-        """법안 기본 정보를 API에서 가져오는 함수."""
+    # def fetch_bills_info(self):
+    #     """법안 기본 정보를 API에서 가져오는 함수."""
 
-        # bill_id가 있는 법안 내용 데이터 수집
-        if self.df_bills is None:
-            print("✅ [INFO] 법안정보 수집 대상 bill_no 수집을 위해 법안 내용 API로부터 정보를 수집합니다.")
-            df_bills = self.fetch_bills_content()
-        else:
-            df_bills = self.df_bills
+    #     # bill_id가 있는 법안 내용 데이터 수집
+    #     if self.df_bills is None:
+    #         print("✅ [INFO] 법안정보 수집 대상 bill_no 수집을 위해 법안 내용 API로부터 정보를 수집합니다.")
+    #         df_bills = self.fetch_bills_data()
+    #     else:
+    #         df_bills = self.df_bills
 
-        if df_bills is None or df_bills.empty:
-            print("❌ [ERROR] `df_bills` 데이터가 없습니다. 올바른 값을 전달하세요.")
-            return None
+    #     if df_bills is None or df_bills.empty:
+    #         print("❌ [ERROR] `df_bills` 데이터가 없습니다. 올바른 값을 전달하세요.")
+    #         return None
 
-        api_key = os.environ.get("APIKEY_billsInfo")
-        url = self.url or "https://open.assembly.go.kr/portal/openapi/ALLBILL"
+    #     api_key = os.environ.get("APIKEY_billsInfo")
+    #     url = self.url or "https://open.assembly.go.kr/portal/openapi/ALLBILL"
 
-        # 출처에 따른 매퍼 설정
-        if "open.assembly.go.kr" in url:
-            mapper = self.mapper_open_json
-            format = "json"
-        else:
-            mapper = self.mapper_datagokr_xml
-            format = "xml"
+    #     # 출처에 따른 매퍼 설정
+    #     if "open.assembly.go.kr" in url:
+    #         mapper = self.mapper_open_json
+    #         format = "json"
+    #     else:
+    #         mapper = self.mapper_datagokr_xml
+    #         format = "xml"
 
-        all_data = []
-        print(f"\n📌 [법안 정보 데이터 수집 중...]")
-        start_time = time.time()
+    #     all_data = []
+    #     print(f"\n📌 [법안 정보 데이터 수집 중...]")
+    #     start_time = time.time()
 
-        for row in tqdm(df_bills.itertuples(), total=len(df_bills)):
-            params = {
-                "Key": api_key,
-                mapper.get("page_param", "pIndex"): 1,
-                mapper.get("size_param", "pSize"): 5,
-                "Type": format,
-                "BILL_NO": row.billNumber,
-            }
+    #     for row in tqdm(df_bills.itertuples(), total=len(df_bills)):
+    #         params = {
+    #             "Key": api_key,
+    #             mapper.get("page_param", "pIndex"): 1,
+    #             mapper.get("size_param", "pSize"): 5,
+    #             "Type": format,
+    #             "BILL_NO": row.billNumber,
+    #         }
 
-            df_tmp = self.fetch_data_generic(
-                url=url,
-                params=params,
-                mapper=mapper,
-                format=format,
-                all_pages=True,
-            )
+    #         df_tmp = self.fetch_data_generic(
+    #             url=url,
+    #             params=params,
+    #             mapper=mapper,
+    #             format=format,
+    #             all_pages=True,
+    #         )
 
-            if not df_tmp.empty:
-                all_data.extend(df_tmp.to_dict("records"))
+    #         if not df_tmp.empty:
+    #             all_data.extend(df_tmp.to_dict("records"))
 
-        df_bills_info = pd.DataFrame(all_data)
+    #     df_bills_info = pd.DataFrame(all_data)
 
-        end_time = time.time()
-        total_time = end_time - start_time
-        print(f"✅ [INFO] 다운로드 완료! 총 소요 시간: {total_time:.2f}초")
+    #     end_time = time.time()
+    #     total_time = end_time - start_time
+    #     print(f"✅ [INFO] 다운로드 완료! 총 소요 시간: {total_time:.2f}초")
 
-        if df_bills_info.empty:
-            print("❌ [ERROR] 수집한 데이터가 없습니다.")
-            return None
+    #     if df_bills_info.empty:
+    #         print("❌ [ERROR] 수집한 데이터가 없습니다.")
+    #         return None
 
-        print(f"✅ [INFO] 총 {len(df_bills_info)}개의 법안 정보 데이터가 수집되었습니다.")
+    #     print(f"✅ [INFO] 총 {len(df_bills_info)}개의 법안 정보 데이터가 수집되었습니다.")
 
-        if self.filter_data:
-            print("✅ [INFO] 데이터 컬럼 필터링을 수행합니다.")
-            columns_to_keep = ['ERACO', 'BILL_ID', 'BILL_NO', 'BILL_NM', 'PPSR_NM', 'JRCMIT_NM']
-            df_bills_info = df_bills_info[columns_to_keep]
+    #     if self.filter_data:
+    #         print("✅ [INFO] 데이터 컬럼 필터링을 수행합니다.")
+    #         columns_to_keep = ['ERACO', 'BILL_ID', 'BILL_NO', 'BILL_NM', 'PPSR_NM', 'JRCMIT_NM']
+    #         df_bills_info = df_bills_info[columns_to_keep]
 
-            column_mapping = {
-                'ERACO': 'assemblyNumber',
-                'BILL_ID': 'billId',
-                'BILL_NO': 'billNumber',
-                'BILL_NM': 'billName',
-                'PPSR_NM': 'proposers',
-                'JRCMIT_NM': 'committee'
-            }
-            df_bills_info.rename(columns=column_mapping, inplace=True)
+    #         column_mapping = {
+    #             'ERACO': 'assemblyNumber',
+    #             'BILL_ID': 'billId',
+    #             'BILL_NO': 'billNumber',
+    #             'BILL_NM': 'billName',
+    #             'PPSR_NM': 'proposers',
+    #             'JRCMIT_NM': 'committee'
+    #         }
+    #         df_bills_info.rename(columns=column_mapping, inplace=True)
 
-            def extract_names(proposer_str):
-                return re.findall(r'[가-힣]+(?=의원)', proposer_str) if isinstance(proposer_str, str) else []
+    #         def extract_names(proposer_str):
+    #             return re.findall(r'[가-힣]+(?=의원)', proposer_str) if isinstance(proposer_str, str) else []
 
-            df_bills_info['rstProposerNameList'] = df_bills_info['proposers'].apply(extract_names)
-            df_bills_info['assemblyNumber'] = df_bills_info['assemblyNumber'].str.replace(r'\D', '', regex=True)
-            print("✅ [INFO] 컬럼 필터링 및 컬럼명 변경 완료.")
+    #         df_bills_info['rstProposerNameList'] = df_bills_info['proposers'].apply(extract_names)
+    #         df_bills_info['assemblyNumber'] = df_bills_info['assemblyNumber'].str.replace(r'\D', '', regex=True)
+    #         print("✅ [INFO] 컬럼 필터링 및 컬럼명 변경 완료.")
 
-        self.content = df_bills_info
-        return df_bills_info
+    #     self.content = df_bills_info
+    #     return df_bills_info
 
     def fetch_lawmakers_data(self):
         """
@@ -416,10 +416,10 @@ class DataFetcher:
             billId를 사용하여 각 법안의 공동 발의자 명단을 수집하는 함수.
             """
 
-            # `df_bills`가 없으면 `fetch_bills_content()`를 호출하여 자동으로 수집
+            # `df_bills`가 없으면 `fetch_bills_data()`를 호출하여 자동으로 수집
             if df_bills is None:
                 print("✅ [INFO] 법안 공동발의자 명단 정보 수집 대상 bill_no 수집을 위해 법안 내용 API로부터 정보를 수집합니다.")
-                df_bills = self.fetch_bills_info()
+                df_bills = self.fetch_bills_data()
 
             # 데이터가 없으면 종료
             if df_bills is None or df_bills.empty:
@@ -876,7 +876,7 @@ class DataFetcher:
         # df_bills 확인 및 자동 수집
         if df_bills is None or df_bills.empty:
             print("⚠️ [WARNING] 수집된 법안 데이터(self.df_bills)가 없습니다. 법안 내용을 먼저 수집합니다...")
-            df_bills = self.fetch_bills_info()
+            df_bills = self.fetch_bills_data()
 
             # 수집 후에도 df_bills가 없으면 종료
             if df_bills is None or df_bills.empty:
