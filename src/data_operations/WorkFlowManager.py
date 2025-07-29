@@ -11,6 +11,7 @@ from .DataProcessor import DataProcessor
 from .AISummarizer import AISummarizer
 from .APISender import APISender
 from .DatabaseManager import DatabaseManager
+from .Notifier import Notifier
 
 class WorkFlowManager:
     def __init__(self, mode):
@@ -95,7 +96,7 @@ class WorkFlowManager:
 
         # 중복 데이터 제거 (fetch 모드에서는 수행하지 않음)
         if mode != 'fetch':
-            processor.remove_duplicates(df_bills, DatabaseManager())
+            df_bills = processor.remove_duplicates(df_bills, DatabaseManager())
 
         if len(df_bills) == 0:
             print("새로운 데이터가 없습니다. 코드를 종료합니다.")
@@ -107,14 +108,15 @@ class WorkFlowManager:
         # 의원 데이터 처리
         df_bills_congressman = processor.process_congressman_bills(df_bills)
 
-        # 위원장 데이터 처리
-        df_bills_chair, df_alternatives = processor.process_chairman_bills(df_bills)
+        # 위원장 데이터 처리 TODO: 민준님 작업 이후 다시 위원장안 로직 포함
+        # df_bills_chair, df_alternatives = processor.process_chairman_bills(df_bills)
 
-        # 정부 데이터 처리
-        df_bills_gov = processor.process_gov_bills(df_bills)
+        # 정부 데이터 처리 TODO: 민준님 작업 이후 다시 정부안 로직 포함
+        # df_bills_gov = processor.process_gov_bills(df_bills)
 
         # 발의주체별 법안 데이터 합치기
-        df_bills = pd.concat([df_bills_congressman, df_bills_chair, df_bills_gov], ignore_index=True)
+        # df_bills = pd.concat([df_bills_congressman, df_bills_chair, df_bills_gov], ignore_index=True)
+        df_bills = df_bills_congressman # 위원장, 정부 데이터는 현재 사용하지 않음 -> 민준님 작업 이후 다시 로직 포함
 
         # 데이터 전송을 위한 commitee 컬럼 임의 추가
         # TODO: 민준님이 백엔드단에서 필요 컬럼 수정 작업하고 나면 이 부분 삭제할 것
@@ -128,6 +130,11 @@ class WorkFlowManager:
         sender = APISender()
 
         if mode == 'remote':
+            
+            if len(df_bills) == 0:
+                print("새로운 데이터가 없습니다. 코드를 종료합니다.")
+                return None
+            
             print("[데이터 요약 및 전송 시작]")
 
             # 제목 요약
@@ -148,6 +155,15 @@ class WorkFlowManager:
             post_ulr_congressman_propose_date = os.environ.get("POST_URL_congressman_propose_date")
             sender.request_post(post_ulr_congressman_propose_date)
             print("[의원별 최신 발의날짜 갱신 요청 완료]")
+
+                # Notifier 인스턴스 생성
+            notifier = Notifier()
+
+            print("\n--- 'bills' 주제 테스트 ---")
+            notifier.notify(
+                subject="bills", 
+                data=df_bills, 
+            )
 
         elif mode == 'local':
             print("[로컬 모드 : AI 요약 생략 및 로컬 DB에 전송]")

@@ -54,13 +54,13 @@ class DataProcessor:
                 [f'ID_{i}{j}' for j in range(1, 20)] for i in range(len(df_bills_congressman))
             ]
 
-        def get_proposer_codes(row):
-            name_list_length = len(row['rstProposerNameList'])
-            # 이름 목록의 길이에 맞춰 ID 리스트를 자릅니다.
-            return row['publicProposerIdList'][:name_list_length]
+        # 리스트 컴프리헨션을 사용하여 rstProposerIdList 생성
+        id_lists = [
+            row['publicProposerIdList'][:len(row['rstProposerNameList'])] 
+            for index, row in df_bills_congressman.iterrows()
+        ]
 
-        # 새로운 컬럼 rstProposerIdList에 publicProposerIdList 리스트에서 슬라이싱한 값 추가
-        df_bills_congressman['rstProposerIdList'] = df_bills_congressman.apply(get_proposer_codes, axis=1)
+        df_bills_congressman['rstProposerIdList'] = id_lists
 
         print(f"\n[처리 후 의원 발의 법안 개수: {len(df_bills_congressman)}]")
 
