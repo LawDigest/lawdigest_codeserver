@@ -11,3 +11,5 @@ debug*
 tests/ipynb
 backup
 fetch
+lawdigestenv
+log

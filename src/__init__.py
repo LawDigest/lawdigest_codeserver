@@ -1,6 +1,6 @@
 """lawdigest package initialization."""
 
-from .data_operations_OOP import (
+from .data_operations import (
     DatabaseManager,
     DataFetcher,
     DataProcessor,
@@ -8,7 +8,7 @@ from .data_operations_OOP import (
     APISender,
     WorkFlowManager,
 )
-from .notifier import Notifier
+from .data_operations import Notifier
 
 __all__ = [
     "DatabaseManager",
