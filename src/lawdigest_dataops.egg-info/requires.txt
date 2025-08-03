@@ -6,6 +6,7 @@ python-dotenv
 beautifulsoup4
 tqdm
 PyMySQL
+langchain
 
 [dev]
 jupyter
