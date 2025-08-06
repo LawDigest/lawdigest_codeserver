@@ -753,14 +753,14 @@ class DataFetcher:
         start_time = time.time()
 
         df_vote = self.df_vote
-        if df_vote == None:
-            print("⚠️ [WARNING] 수집에 필요한 df_vote 데이터가 없습니다.")
+        if df_vote is None:
+            print("⚠️ [WARNING] 수집에 필요한 df_vote 데이터가 없습니다. 새로 수집합니다.")
             self.fetch_bills_vote()
-            if len(self.df_vote) == 0:
-                print("🚨 [WARNING] 해당 날짜에 수집 가능한 데이터가 없습니다. 코드를 종료합니다.")
-                return None
-                
-        df_vote = self.df_vote
+            df_vote = self.df_vote  # Update local df_vote
+
+        if df_vote is None or df_vote.empty:
+            print("🚨 [WARNING] 해당 날짜에 수집 가능한 데이터가 없습니다. 코드를 종료합니다.")
+            return None
 
         print(f"\n📌 [INFO] 법안별 정당별 투표 결과 데이터 수집 시작...")
 

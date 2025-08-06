@@ -1,10 +1,30 @@
-requests
-pandas
-lxml  # xml.etree.ElementTree를 사용하기 위한 패키지
-jupyter  # IPython.display를 위한 패키지
-openai
-python-dotenv
-beautifulsoup4
-tqdm
-PyMySQL
-langchain
+# Core data manipulation
+pandas>=2.0.0
+
+# HTTP requests
+requests>=2.25.0
+
+# Web scraping
+beautifulsoup4>=4.9.0
+
+# MySQL database
+PyMySQL>=1.0.0
+
+# Environment variables
+python-dotenv>=0.19.0
+
+# Progress bars
+tqdm>=4.62.0
+
+# LangChain for AI
+langchain>=0.1.0
+langchain-community>=0.3.0
+
+# OpenAI API
+openai>=1.0.0
+
+# IPython for development (optional, for Jupyter notebooks)
+ipython>=8.0.0
+
+# XML parsing support
+lxml>=4.6.0
