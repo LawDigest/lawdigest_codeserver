@@ -13,3 +13,6 @@ backup/
 fetch/
 lawdigestenv/
 log/
+reports/
+.claude/
+.claude/settings.local.json
