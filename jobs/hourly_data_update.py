@@ -2,6 +2,7 @@
 import time
 import sys
 import os
+import datetime
 from typing import Dict, Any, Callable, Optional
 import pandas as pd
 
@@ -75,6 +76,7 @@ def run_update_job(job_key: str, job_function: Callable, report_manager: ReportM
 def main():
     """
     전체 데이터 업데이트 및 리포팅 파이프라인을 실행합니다.
+    성공 또는 오류가 발생한 항목에 대해서만 알림을 전송합니다.
     """
     mode = 'remote'
     print(f"🚀 전체 데이터 업데이트를 '{mode}' 모드로 시작합니다.")
@@ -86,8 +88,6 @@ def main():
     os.makedirs("reports/last_run", exist_ok=True)
     report_manager.clear_results()
     
-    error_messages = []
-
     update_jobs = {
         "bills": wfm.update_bills_data,
         "lawmakers": wfm.update_lawmakers_data,
@@ -97,26 +97,56 @@ def main():
     }
 
     for job_key, job_func in update_jobs.items():
-        error = run_update_job(job_key, job_func, report_manager)
-        if error:
-            error_messages.append(error)
+        run_update_job(job_key, job_func, report_manager)
         time.sleep(1)
 
-    # 1. 통합 리포트 전송
-    print("\n--- [시작] 통합 리포트 생성 및 전송 ---")
-    report_manager.send_status_report()
-    print("✅ [성공] 통합 리포트 전송 완료")
+    # --- 알림 로직 수정 ---
+    # 1. 모든 작업 결과 수집
+    print("\n--- [시작] 리포트 생성 및 전송 ---")
+    all_results = report_manager.collect_all_results()
 
-    # 2. 수집된 오류 메시지 전송
-    if error_messages:
-        print("\n--- [시작] 오류 알림 전송 ---")
+    # 2. 알림 보낼 결과 필터링 (성공 또는 오류)
+    results_to_notify = {
+        key: result for key, result in all_results.items()
+        if result['status'] in ['success', 'error']
+    }
+
+    # 3. 필터링된 결과가 있을 때만 알림 생성 및 전송
+    if results_to_notify:
+        current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+        report_lines = [f"📊 **데이터 업데이트 결과** ({current_time})"]
+        
+        status_emojis = {"success": "✅", "error": "🚨"}
+        job_name_map = {
+            "bills": "법안", "lawmakers": "의원", "timeline": "타임라인",
+            "results": "처리결과", "votes": "표결정보",
+        }
+
+        for job_key, result in sorted(results_to_notify.items()):
+            status = result['status']
+            job_name = job_name_map.get(job_key, job_key)
+            emoji = status_emojis.get(status, "❓")
+
+            if status == "success":
+                data_count = result.get('data_count', 0)
+                line = f"{emoji} **{job_name}**: 전송 성공 ({data_count}건)"
+            elif status == "error":
+                error_msg = result.get('error_message', '알 수 없는 오류')
+                line = f"{emoji} **{job_name}**: 실행 오류 - `{error_msg}`"
+            
+            report_lines.append(line)
+        
+        report_message = "\n".join(report_lines)
+        
+        print("\n--- [시작] 알림 전송 ---")
         notifier = Notifier()
-        for msg in error_messages:
-            notifier.send_discord_message(msg)
-            time.sleep(1)
-        print("✅ [성공] 모든 오류 알림 전송 완료")
+        notifier.send_discord_message(report_message)
+        print("✅ [성공] 알림 전송 완료")
+    else:
+        print("\n✅ 전송할 신규 데이터 또는 오류가 없어 알림을 생략합니다.")
 
     print("\n🎉 모든 데이터 업데이트 및 리포팅 작업이 완료되었습니다.")
+
 
 if __name__ == "__main__":
     main()
