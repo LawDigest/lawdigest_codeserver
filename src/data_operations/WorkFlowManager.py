@@ -102,6 +102,8 @@ class WorkFlowManager:
             print("새로운 데이터가 없습니다. 코드를 종료합니다.")
             return None
 
+        print(f"수집된 신규 법안 발의자 종류: {df_bills['proposerKind'].value_counts()}")
+
         # AI 요약 컬럼 추가
         processor.add_AI_summary_columns(df_bills)
 
@@ -137,14 +139,29 @@ class WorkFlowManager:
             
             print("[데이터 요약 및 전송 시작]")
 
-            # 제목 요약
-            summerizer.AI_title_summarize(df_bills)
+            # 날짜별로 데이터 처리
+            all_processed_bills = []
+            for propose_date, group in df_bills.groupby('proposeDate'):
+                print(f"\n--- 처리 날짜: {propose_date} ---")
+                
+                # 제목 요약
+                print(f"[{propose_date}] 제목 요약 중...")
+                summerizer.AI_title_summarize(group)
 
-            # 내용 요약
-            summerizer.AI_content_summarize(df_bills)
+                # 내용 요약
+                print(f"[{propose_date}] 내용 요약 중...")
+                summerizer.AI_content_summarize(group)
 
-            # 데이터 전송
-            sender.send_data(df_bills, url, payload_name)
+                # 데이터 전송
+                print(f"[{propose_date}] 데이터 전송 중...")
+                sender.send_data(group, url, payload_name)
+                
+                all_processed_bills.append(group)
+
+            # 처리된 모든 데이터를 하나의 데이터프레임으로 합치기
+            df_bills_processed = pd.concat(all_processed_bills, ignore_index=True)
+
+            print("\n[모든 날짜 처리 완료. 후속 작업 시작]")
 
             print("[정당별 법안 발의수 갱신 요청 중...]")
             post_url_party_bill_count = os.environ.get("POST_URL_party_bill_count")
@@ -156,13 +173,12 @@ class WorkFlowManager:
             sender.request_post(post_ulr_congressman_propose_date)
             print("[의원별 최신 발의날짜 갱신 요청 완료]")
 
-                # Notifier 인스턴스 생성
+            # Notifier 인스턴스 생성 및 알림 전송
             notifier = Notifier()
-
-            print("\n--- 'bills' 주제 테스트 ---")
+            print("\n--- 최종 'bills' 처리 결과 알림 ---")
             notifier.notify(
                 subject="bills", 
-                data=df_bills, 
+                data=df_bills_processed, 
             )
 
         elif mode == 'local':
@@ -457,7 +473,7 @@ class WorkFlowManager:
 
         if df_vote is None or df_vote.empty:
             print("❌ [ERROR] 수집된 표결 결과 데이터가 없습니다.")
-            return None
+            return None, None
 
         df_vote_party = fetcher.fetch_data('vote_party')
 
