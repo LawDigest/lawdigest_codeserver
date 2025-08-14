@@ -38,7 +38,7 @@ class AISummarizer:
         if model is None:
             model = os.environ.get("TITLE_SUMMARIZATION_MODEL")
 
-        llm = ChatOpenAI(model=model, openai_api_key=self.api_key)
+        llm = ChatOpenAI(model=model, openai_api_key=self.api_key, temperature=1)
         
         print("\n[AI 제목 요약 진행 중...]")
         
@@ -96,7 +96,7 @@ class AISummarizer:
         if model is None:
             model = os.environ.get("CONTENT_SUMMARIZATION_MODEL")
 
-        llm = ChatOpenAI(model=model, openai_api_key=self.api_key)
+        llm = ChatOpenAI(model=model, openai_api_key=self.api_key, temperature=1)
 
         print("\n[AI 내용 요약 진행 중...]")
 

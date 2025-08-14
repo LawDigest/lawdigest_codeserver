@@ -94,8 +94,8 @@ class WorkFlowManager:
         # 법안 데이터 머지
         # df_bills = processor.merge_bills_df(bills_content_data, bills_info_data)
 
-        # 중복 데이터 제거 (fetch 모드에서는 수행하지 않음)
-        if mode != 'fetch':
+        # 중복 데이터 제거 (fetch 및 ai_test 모드에서는 수행하지 않음)
+        if mode != 'fetch' and mode != 'ai_test':
             df_bills = processor.remove_duplicates(df_bills, DatabaseManager())
 
         if len(df_bills) == 0:
