@@ -487,6 +487,20 @@ class DataFetcher:
             value = str(value).strip()
             return value or None
 
+        def ensure_entry(bill_id):
+            normalized = normalize_str(bill_id)
+            if not normalized:
+                return None
+            return aggregated.setdefault(
+                normalized,
+                {
+                    'billId': normalized,
+                    'representativeProposerIdList': [],
+                    'publicProposerIdList': [],
+                    'ProposerName': [],
+                },
+            )
+
         def find_lawmaker_code(name=None, hj_name=None, party=None):
             if name is None:
                 return None
@@ -510,6 +524,10 @@ class DataFetcher:
         aggregated = {}
 
         for bill_id in tqdm(bill_ids, desc="발의자 수집", unit="건"):
+            if ensure_entry(bill_id) is None:
+                tqdm.write(f"⚠️ [WARN] billId {bill_id} 값이 올바르지 않아 건너뜁니다.")
+                continue
+
             params = {
                 'KEY': api_key,
                 'Type': 'xml',
@@ -536,6 +554,9 @@ class DataFetcher:
 
             for row in df_tmp.to_dict('records'):
                 row_bill_id = normalize_str(row.get('BILL_ID', bill_id))
+                target = ensure_entry(row_bill_id)
+                if target is None:
+                    continue
                 proposer_role = normalize_str(row.get('PUBL_PROPOSER'))
                 proposer_code = normalize_str(
                     row.get('PPSR_CD')
@@ -562,18 +583,6 @@ class DataFetcher:
                         hj_name=proposer_hj_name,
                         party=proposer_party,
                     )
-
-                aggregated.setdefault(
-                    row_bill_id,
-                    {
-                        'billId': row_bill_id,
-                        'representativeProposerIdList': [],
-                        'publicProposerIdList': [],
-                        'ProposerName': [],
-                    },
-                )
-
-                target = aggregated[row_bill_id]
 
                 is_representative = proposer_role and ('대표' in proposer_role)
 
