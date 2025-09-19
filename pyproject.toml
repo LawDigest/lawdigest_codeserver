@@ -20,7 +20,8 @@ dependencies = [
   "beautifulsoup4",
   "tqdm",
   "PyMySQL",
-  "langchain"
+  "langchain",
+  "langchain-community"
 ]
 
 [project.optional-dependencies]

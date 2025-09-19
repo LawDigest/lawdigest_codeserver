@@ -6,9 +6,10 @@ src/data_operations/DataFetcher.py
 src/data_operations/DataProcessor.py
 src/data_operations/DatabaseManager.py
 src/data_operations/Notifier.py
+src/data_operations/ReportManager.py
 src/data_operations/WorkFlowManager.py
 src/data_operations/__init__.py
-src/etc/crawling_법령.py
+src/etc/crawling_법령_old.py
 src/etc/crawling_오늘의국회.py
 src/etc/crawling_판례.py
 src/etc/fetch_data_generic.py
@@ -18,4 +19,5 @@ src/lawdigest_dataops.egg-info/dependency_links.txt
 src/lawdigest_dataops.egg-info/requires.txt
 src/lawdigest_dataops.egg-info/top_level.txt
 tests/test_DataFetcher.py
+tests/test_WorkFlowManager.py
 tests/test_integration_ai_summarizer.py

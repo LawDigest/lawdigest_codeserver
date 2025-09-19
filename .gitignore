@@ -16,3 +16,4 @@ log/
 reports/
 .claude/
 .claude/settings.local.json
+airflow

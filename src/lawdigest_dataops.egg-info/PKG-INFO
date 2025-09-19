@@ -14,6 +14,7 @@ Requires-Dist: beautifulsoup4
 Requires-Dist: tqdm
 Requires-Dist: PyMySQL
 Requires-Dist: langchain
+Requires-Dist: langchain-community
 Provides-Extra: dev
 Requires-Dist: jupyter; extra == "dev"
 

@@ -128,6 +128,7 @@ class DataFetcher:
             return data, total_count
         except Exception as e:
             tqdm.write(f"   ❌ 응답 파싱 중 오류 발생: {e}")
+            print(f"응답 결과: {response_content}")
             return [], 0
 
     def fetch_data_generic(self, url, params, mapper, format='json', all_pages=True, verbose=False, max_retry=3):
@@ -201,7 +202,7 @@ class DataFetcher:
         )
         end_date = self.params.get("end_date", datetime.now().strftime('%Y-%m-%d'))
 
-        api_key = os.environ.get("APIKEY_billsContent")
+        api_key = os.environ.get("APIKEY_DATAGOKR")
         url = 'http://apis.data.go.kr/9710000/BillInfoService2/getBillInfoList'
         mapper = self.mapper_datagokr_xml
 
