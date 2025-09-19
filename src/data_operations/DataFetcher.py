@@ -6,8 +6,6 @@ from datetime import datetime, timedelta
 from IPython.display import clear_output
 import os
 from dotenv import load_dotenv
-from bs4 import BeautifulSoup
-import re
 from tqdm import tqdm
 
 import json
@@ -375,6 +373,10 @@ class DataFetcher:
         Returns:
         - df_lawmakers: pandas.DataFrame, 수집된 국회의원 데이터
         """
+        if self.df_lawmakers is not None and not self.df_lawmakers.empty:
+            self.content = self.df_lawmakers
+            return self.df_lawmakers
+
         api_key = os.environ.get("APIKEY_lawmakers")
         url = 'https://open.assembly.go.kr/portal/openapi/nwvrqwxyaytdsfvhu'  # 열린국회정보 '국회의원 인적사항' API
         mapper = self.mapper_open_xml
@@ -407,83 +409,216 @@ class DataFetcher:
 
         print(f"✅ [INFO] 총 {len(df_lawmakers)} 개의 의원 데이터 수집됨")
 
+        self.df_lawmakers = df_lawmakers
         self.content = df_lawmakers
         return df_lawmakers
 
 
     def fetch_bills_coactors(self, df_bills=None):
-            """
-            billId를 사용하여 각 법안의 공동 발의자 명단을 수집하는 함수.
-            """
+        """열린국회정보 API를 활용하여 대표발의자 및 공동발의자 정보를 수집합니다."""
 
-            # `df_bills`가 없으면 `fetch_bills_data()`를 호출하여 자동으로 수집
-            if df_bills is None:
-                print("✅ [INFO] 법안 공동발의자 명단 정보 수집 대상 bill_no 수집을 위해 법안 내용 API로부터 정보를 수집합니다.")
-                df_bills = self.fetch_bills_data()
+        # `df_bills`가 없으면 `fetch_bills_data()`를 호출하여 자동으로 수집
+        if df_bills is None:
+            print("✅ [INFO] 법안 발의자 명단 정보 수집 대상 billId 확보를 위해 법안 내용 API로부터 정보를 수집합니다.")
+            df_bills = self.fetch_bills_data()
 
-            # 데이터가 없으면 종료
-            if df_bills is None or df_bills.empty:
-                print("❌ [ERROR] 법안 데이터가 없습니다.")
+        # 데이터가 없으면 종료
+        if df_bills is None or df_bills.empty:
+            print("❌ [ERROR] 법안 데이터가 없습니다.")
+            return pd.DataFrame(columns=['billId', 'publicProposerIdList'])
+
+        # 국회의원 데이터는 발의자 코드 매칭에 활용
+        if self.df_lawmakers is None:
+            df_lawmakers = self.fetch_lawmakers_data()
+        else:
+            df_lawmakers = self.df_lawmakers
+
+        if df_lawmakers is None or df_lawmakers.empty:
+            print("❌ [ERROR] 국회의원 데이터가 존재하지 않아 발의자 코드를 매칭할 수 없습니다.")
+            return pd.DataFrame(columns=['billId', 'publicProposerIdList'])
+
+        required_columns = {'HG_NM', 'MONA_CD'}
+        missing_columns = required_columns - set(df_lawmakers.columns)
+        if missing_columns:
+            print(f"❌ [ERROR] 국회의원 데이터에 필요한 컬럼이 없습니다: {', '.join(sorted(missing_columns))}")
+            return pd.DataFrame(columns=['billId', 'publicProposerIdList'])
+
+        api_key = (
+            os.environ.get("APIKEY_billProposers")
+            or os.environ.get("APIKEY_lawmakers")
+            or os.environ.get("APIKEY_billsInfo")
+        )
+
+        if not api_key:
+            print("❌ [ERROR] 발의자 정보를 조회할 API Key가 설정되어 있지 않습니다.")
+            return pd.DataFrame(columns=['billId', 'publicProposerIdList'])
+
+        url = 'https://open.assembly.go.kr/portal/openapi/BILLNPPPSR'
+        mapper = self.mapper_open_xml
+
+        bill_ids = (
+            df_bills
+            .dropna(subset=['billId'])
+            ['billId']
+            .astype(str)
+            .unique()
+            .tolist()
+        )
+
+        print(f"📌 [INFO] 대표/공동 발의자 정보 수집 시작... 총 {len(bill_ids)}개의 법안 대상")
+
+        def append_unique(seq, value, *, front=False):
+            if not value:
+                return
+            if value in seq:
+                return
+            if front:
+                seq.insert(0, value)
+            else:
+                seq.append(value)
+
+        def normalize_str(value):
+            if value is None:
+                return None
+            if isinstance(value, float) and pd.isna(value):
+                return None
+            if pd.isna(value):
+                return None
+            value = str(value).strip()
+            return value or None
+
+        def ensure_entry(bill_id):
+            normalized = normalize_str(bill_id)
+            if not normalized:
+                return None
+            return aggregated.setdefault(
+                normalized,
+                {
+                    'billId': normalized,
+                    'representativeProposerIdList': [],
+                    'publicProposerIdList': [],
+                    'ProposerName': [],
+                },
+            )
+
+        def find_lawmaker_code(name=None, hj_name=None, party=None):
+            if name is None:
                 return None
 
-            coactors_data = []
-            
-            # 국회의원 데이터 가져오기
-            df_lawmakers = self.fetch_lawmakers_data()
+            candidates = df_lawmakers[df_lawmakers['HG_NM'] == name]
+            if 'HJ_NM' in df_lawmakers.columns and hj_name:
+                candidates = candidates[candidates['HJ_NM'] == hj_name]
+            if 'POLY_NM' in df_lawmakers.columns and party:
+                candidates = candidates[candidates['POLY_NM'] == party]
 
-            print(f"📌 [INFO] 공동 발의자 정보 수집 시작... 총 {len(df_bills)} 개의 법안 대상")
-            
-            # 각 법안의 billId에 대해 공동 발의자 정보를 수집
-            for billId in tqdm(df_bills['billId']):
-                url = f"http://likms.assembly.go.kr/bill/coactorListPopup.do?billId={billId}"
-                
-                # HTML 가져오기
-                try:
-                    response = requests.get(url)
-                    response.raise_for_status()
-                except requests.RequestException as e:
-                    print(f"❌ [ERROR] Failed to fetch data for billId {billId}: {e}")
+            if not candidates.empty:
+                return normalize_str(candidates.iloc[0]['MONA_CD'])
+
+            # 한자/정당 정보가 일치하지 않는 경우 이름만으로 재검색
+            candidates = df_lawmakers[df_lawmakers['HG_NM'] == name]
+            if not candidates.empty:
+                return normalize_str(candidates.iloc[0]['MONA_CD'])
+
+            return None
+
+        aggregated = {}
+
+        for bill_id in tqdm(bill_ids, desc="발의자 수집", unit="건"):
+            if ensure_entry(bill_id) is None:
+                tqdm.write(f"⚠️ [WARN] billId {bill_id} 값이 올바르지 않아 건너뜁니다.")
+                continue
+
+            params = {
+                'KEY': api_key,
+                'Type': 'xml',
+                mapper['page_param']: 1,
+                mapper['size_param']: 100,
+                'BILL_ID': bill_id,
+            }
+
+            df_tmp = self.fetch_data_generic(
+                url=url,
+                params=params,
+                mapper=mapper,
+                format='xml',
+                all_pages=True,
+            )
+
+            if df_tmp.empty:
+                tqdm.write(f"⚠️ [WARN] billId {bill_id}에 대한 발의자 데이터를 찾을 수 없습니다.")
+                continue
+
+            df_tmp.columns = [col.upper() for col in df_tmp.columns]
+            if 'BILL_ID' not in df_tmp.columns:
+                df_tmp['BILL_ID'] = bill_id
+
+            for row in df_tmp.to_dict('records'):
+                row_bill_id = normalize_str(row.get('BILL_ID', bill_id))
+                target = ensure_entry(row_bill_id)
+                if target is None:
                     continue
-                
-                soup = BeautifulSoup(response.text, 'html.parser')
-                coactors_section = soup.find('div', {'class': 'links textType02 mt20'})
+                proposer_role = normalize_str(row.get('PUBL_PROPOSER'))
+                proposer_code = normalize_str(
+                    row.get('PPSR_CD')
+                    or row.get('PUBL_PRPSR_CD')
+                    or row.get('RPRSNT_PRPSR_CD')
+                )
+                proposer_name = normalize_str(
+                    row.get('PPSR_NM')
+                    or row.get('PUBL_PRPSR_NM')
+                )
+                proposer_hj_name = normalize_str(
+                    row.get('PPSR_HJ_NM')
+                    or row.get('PUBL_PRPSR_HJ_NM')
+                )
+                proposer_party = normalize_str(
+                    row.get('RPP_NM')
+                    or row.get('PPR_NM')
+                    or row.get('POLY_NM')
+                )
 
-                if coactors_section is None:
-                    print(f"❌ [ERROR] 공동 발의자 명단을 찾을 수 없습니다 for billId {billId}.")
-                    continue
-                
-                # 공동 발의자 정보 추출
-                for a_tag in coactors_section.find_all('a'):
-                    coactor_text = a_tag.get_text(strip=True)
-                    match = re.match(r'(.+?)\((.+?)/(.+?)\)', coactor_text)
-                    if match:
-                        proposer_name, proposer_party, proposer_hj_name = match.groups()
-                        coactors_data.append([billId, proposer_name, proposer_party, proposer_hj_name])
+                if proposer_code is None:
+                    proposer_code = find_lawmaker_code(
+                        name=proposer_name,
+                        hj_name=proposer_hj_name,
+                        party=proposer_party,
+                    )
 
-            # DataFrame 생성
-            df_coactors = pd.DataFrame(coactors_data, columns=['billId', 'ProposerName', 'ProposerParty', 'ProposerHJName'])
+                is_representative = proposer_role and ('대표' in proposer_role)
 
-            # 공동 발의자 ID 매칭
-            proposer_codes = []
-            for _, row in df_coactors.iterrows():
-                match = df_lawmakers[
-                    (df_lawmakers['HG_NM'] == row['ProposerName']) &
-                    (df_lawmakers['POLY_NM'] == row['ProposerParty']) &
-                    (df_lawmakers['HJ_NM'] == row['ProposerHJName'])
-                ]
-                proposer_codes.append(match['MONA_CD'].values[0] if not match.empty else None)
+                if is_representative:
+                    append_unique(target['representativeProposerIdList'], proposer_code)
+                    append_unique(target['publicProposerIdList'], proposer_code, front=True)
+                    append_unique(target['ProposerName'], proposer_name, front=True)
+                else:
+                    append_unique(target['publicProposerIdList'], proposer_code)
+                    append_unique(target['ProposerName'], proposer_name)
 
-            df_coactors['publicProposerIdList'] = proposer_codes
+        if not aggregated:
+            print("⚠️ [WARN] 어떤 법안에서도 발의자 정보를 수집하지 못했습니다.")
+            return pd.DataFrame(columns=['billId', 'publicProposerIdList'])
 
-            # billId 기준으로 리스트 형태로 그룹화
-            df_coactors = df_coactors.groupby('billId').agg({
-                'publicProposerIdList': lambda x: x.dropna().tolist(),
-                'ProposerName': lambda x: x.dropna().tolist()
-            }).reset_index()
+        df_coactors = pd.DataFrame(aggregated.values())
 
-            print(f"✅ [INFO] 공동 발의자 정보 수집 완료. 총 {len(df_coactors)} 개의 법안 대상")
+        def drop_empty_list(values):
+            return [
+                value
+                for value in values
+                if value and not (isinstance(value, float) and pd.isna(value)) and not pd.isna(value)
+            ]
 
-            return df_coactors
+        df_coactors['representativeProposerIdList'] = df_coactors['representativeProposerIdList'].apply(drop_empty_list)
+        df_coactors['publicProposerIdList'] = df_coactors['publicProposerIdList'].apply(drop_empty_list)
+        df_coactors['ProposerName'] = df_coactors['ProposerName'].apply(drop_empty_list)
+        df_coactors = df_coactors[
+            ['billId', 'representativeProposerIdList', 'publicProposerIdList', 'ProposerName']
+        ]
+
+        print(f"✅ [INFO] 발의자 정보 수집 완료. 총 {len(df_coactors)}개의 법안에 대한 데이터를 확보했습니다.")
+
+        self.content = df_coactors
+
+        return df_coactors
 
     def fetch_bills_timeline(self):
         all_data = []
