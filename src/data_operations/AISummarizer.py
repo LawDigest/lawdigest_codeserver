@@ -1,6 +1,6 @@
 import pandas as pd
 from IPython.display import clear_output
-from langchain.chat_models import ChatOpenAI
+from langchain_community.chat_models import ChatOpenAI
 from langchain.schema import SystemMessage, HumanMessage
 import os
 from dotenv import load_dotenv

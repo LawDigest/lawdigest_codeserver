@@ -615,6 +615,12 @@ class DataFetcher:
             ['billId', 'representativeProposerIdList', 'publicProposerIdList', 'ProposerName']
         ]
 
+        filtered_count = len(df_coactors)
+        df_coactors = df_coactors[df_coactors['publicProposerIdList'].apply(bool)]
+        removed_count = filtered_count - len(df_coactors)
+        if removed_count > 0:
+            print(f"⚠️ [INFO] 공동발의자 정보를 확보하지 못한 {removed_count}개 법안을 제외했습니다.")
+
         print(f"✅ [INFO] 발의자 정보 수집 완료. 총 {len(df_coactors)}개의 법안에 대한 데이터를 확보했습니다.")
 
         self.content = df_coactors
@@ -1023,7 +1029,7 @@ class DataFetcher:
             """ 주어진 bill_id에 대한 대안 법안 데이터를 API에서 수집하는 내부 함수 """
             url = 'http://apis.data.go.kr/9710000/BillInfoService2/getBillAdditionalInfo'
             params = {
-                'serviceKey': 'UJY+e286zOQsAHMHd/5cggpYFaFqG5mWawJKgrubJeKRBqVp0VUsyeHIgw/VGPQjWRSp6yaR/sUhXlhpKyv1cg==',
+                'serviceKey': os.environ.get("APIKEY_DATAGOKR"), # 환경 변수에서 키를 가져오도록 수정
                 'bill_id': bill_id
             }
 
@@ -1081,4 +1087,3 @@ class DataFetcher:
 
         self.content = df_alternatives  # 클래스 속성에 저장
         return df_alternatives
-

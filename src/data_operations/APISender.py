@@ -24,7 +24,8 @@ class APISender:
                 print('상태 코드:', response.status_code)
                 print('응답 내용:', response.text)
             
-            return response
+            response.raise_for_status() # 200번대 코드가 아니면 예외를 발생시킴
+            return response 
         except Exception as e:
             print(f"서버 요청 중 오류 발생: {e}")
 
@@ -65,9 +66,8 @@ class APISender:
                 print('상태 코드:', response.status_code)
                 print('응답 내용:', response.text)
             
+            response.raise_for_status() # 200번대 코드가 아니면 예외를 발생시킴
             return response
         except Exception as e:
             print(f"데이터 전송 중 오류 발생: {e}")
-
-
-
+            raise # 예외를 다시 발생시켜 호출자에게 전파
